@@ -2,6 +2,8 @@ import sys
 import datetime
 import time
 import queue
+import ctypes
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import ttk
 import keyboard
@@ -33,6 +35,32 @@ notifications_state = {
     "agy_alerted": False,
     "codex_alerted": False
 }
+
+_singleton_handle = None
+
+
+def acquire_single_instance() -> bool:
+    """Prevent duplicate HUD windows when ``cotas-gui`` is launched twice."""
+    global _singleton_handle
+    if sys.platform != "win32":
+        return True
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_mutex = kernel32.CreateMutexW
+    create_mutex.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    create_mutex.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+
+    handle = create_mutex(None, False, "Local\\MonitorCotas")
+    if not handle:
+        return True
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        close_handle(handle)
+        return False
+    _singleton_handle = handle
+    return True
 
 class ProgressBarWidget(tk.Canvas):
     def __init__(self, parent, width=280, height=8, **kwargs):
@@ -425,6 +453,8 @@ class QuotaHUDApp:
         self.root.after(100, self.drain_results)
 
 def main():
+    if not acquire_single_instance():
+        return
     root = tk.Tk()
     config_path = None
     if "--config" in sys.argv:

@@ -138,6 +138,11 @@ class MonitorServicesTests(unittest.TestCase):
             self.assertFalse(tray.start())
         self.assertFalse(tray.available)
 
+    def test_gui_has_single_instance_guard(self):
+        source = Path("quota_widget.py").read_text(encoding="utf-8")
+        self.assertIn("Local\\\\MonitorCotas", source)
+        self.assertIn("ERROR_ALREADY_EXISTS", source)
+
     def test_distribution_files_exist(self):
         for name in ("README.md", "requirements.txt", "build.ps1", "cotas-gui.cmd"):
             self.assertTrue(Path(name).exists(), name)

@@ -179,6 +179,12 @@ class MonitorServicesTests(unittest.TestCase):
         self.assertIn("self.root.minsize(360, 300)", source)
         self.assertIn("self.root.iconify()", source)
 
+    def test_gui_configures_dark_native_chrome_and_icon(self):
+        source = Path("quota_widget.py").read_text(encoding="utf-8")
+        self.assertIn("root.iconphoto(True, root._window_icon)", source)
+        self.assertIn("DwmSetWindowAttribute", source)
+        self.assertIn("WINDOW_ICON_PNG", source)
+
     def test_distribution_files_exist(self):
         for name in ("README.md", "requirements.txt", "build.ps1", "cotas-gui.cmd"):
             self.assertTrue(Path(name).exists(), name)

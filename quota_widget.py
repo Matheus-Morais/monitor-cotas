@@ -29,6 +29,9 @@ COLOR_RED = "#f38ba8"
 COLOR_CYAN = "#89dceb"
 COLOR_PURPLE = "#cba6f7"
 BORDER_COLOR = "#45475a"
+WINDOW_ICON_PNG = (
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAsklEQVR4nOWVuw2AMAxEwRvQITEEizEOi7FFtgCloEF87LuLXHB99N7FjtIPw7R3ibFMuFSgbGueQAHhMgEmltmeFmDhtIAipmyP3Iip4P8ZQRG2Dwuo4TW99zNSwMd5yduB8QbuFmDbP8FdAi3hLoGW8E+BFlsPv4KonKd9TZMReOGwwFv7CBwWUMGlAghcJoDCIYHr/Bk4JKCOMYfZ9pSAAh4WOOevgocF1PAa+C9Q5QD9tzd6y5WYPQAAAABJRU5ErkJggg=="
+)
 
 notifications_state = {
     "claude_alerted": False,
@@ -61,6 +64,33 @@ def acquire_single_instance() -> bool:
         return False
     _singleton_handle = handle
     return True
+
+
+def configure_native_window(root):
+    """Apply the dark Windows title bar and the same lightning icon as the HUD."""
+    root._window_icon = tk.PhotoImage(data=WINDOW_ICON_PNG)
+    root.iconphoto(True, root._window_icon)
+    if sys.platform != "win32":
+        return
+
+    try:
+        root.update_idletasks()
+        dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+        set_attribute = dwmapi.DwmSetWindowAttribute
+        set_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+        set_attribute.restype = ctypes.c_long
+
+        dark_mode = ctypes.c_int(1)
+        set_attribute(root.winfo_id(), 20, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode))
+
+        # COLORREF values are encoded as 0x00BBGGRR.
+        caption_color = ctypes.c_int(0x001B1111)
+        text_color = ctypes.c_int(0x00F4D6CD)
+        set_attribute(root.winfo_id(), 35, ctypes.byref(caption_color), ctypes.sizeof(caption_color))
+        set_attribute(root.winfo_id(), 36, ctypes.byref(text_color), ctypes.sizeof(text_color))
+    except (AttributeError, OSError):
+        # Older Windows builds can lack one of the optional DWM attributes.
+        pass
 
 class ProgressBarWidget(tk.Canvas):
     def __init__(self, parent, width=280, height=8, **kwargs):
@@ -473,6 +503,7 @@ def main():
     if not acquire_single_instance():
         return
     root = tk.Tk()
+    configure_native_window(root)
     config_path = None
     if "--config" in sys.argv:
         index = sys.argv.index("--config")

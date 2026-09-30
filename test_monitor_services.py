@@ -172,6 +172,13 @@ class MonitorServicesTests(unittest.TestCase):
         self.assertIn("Local\\\\MonitorCotas", source)
         self.assertIn("ERROR_ALREADY_EXISTS", source)
 
+    def test_gui_supports_minimize_and_resize(self):
+        source = Path("quota_widget.py").read_text(encoding="utf-8")
+        self.assertIn("self.root.overrideredirect(False)", source)
+        self.assertIn("self.root.resizable(True, True)", source)
+        self.assertIn("self.root.minsize(360, 300)", source)
+        self.assertIn("self.root.iconify()", source)
+
     def test_distribution_files_exist(self):
         for name in ("README.md", "requirements.txt", "build.ps1", "cotas-gui.cmd"):
             self.assertTrue(Path(name).exists(), name)

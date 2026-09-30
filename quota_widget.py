@@ -96,7 +96,10 @@ class QuotaHUDApp:
         self.root.title("Monitor de Cotas")
         self.root.geometry(self._initial_geometry())
         self.root.configure(bg=BG_MAIN)
-        self.root.overrideredirect(True) # Janela sem borda do windows
+        # Keep the native Windows frame so minimize and edge resizing work.
+        self.root.overrideredirect(False)
+        self.root.resizable(True, True)
+        self.root.minsize(360, 300)
         self.root.attributes("-topmost", self.config.topmost)
         self.root.attributes("-alpha", self.config.opacity)
         self.is_topmost = self.config.topmost
@@ -195,7 +198,13 @@ class QuotaHUDApp:
         self.status_lbl = tk.Label(header, text="Coletando...", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_MAIN)
         self.status_lbl.pack(side="left", padx=4)
 
-        # Botoes: Pin (Sempre no topo), Minimizar, Fechar
+        # A moldura nativa também oferece minimizar, maximizar, redimensionar
+        # e fechar; este botão mantém a ação acessível dentro do HUD.
+        minimize_btn = tk.Label(header, text="—", font=("Segoe UI", 14, "bold"), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
+        minimize_btn.pack(side="right", padx=(8, 0))
+        minimize_btn.bind("<Button-1>", lambda e: self.root.iconify())
+
+        # Botoes: Pin (Sempre no topo), minimizar e fechar
         close_btn = tk.Label(header, text="✕", font=("Segoe UI", 14, "bold"), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
         close_btn.pack(side="right", padx=(8, 0))
         close_btn.bind("<Button-1>", lambda e: self.root.destroy())

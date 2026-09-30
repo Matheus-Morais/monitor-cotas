@@ -177,6 +177,10 @@ class QuotaHUDApp:
         else:
             self.root.deiconify()
 
+    def minimize_window(self, event=None):
+        """Hide the borderless HUD; restore it from tray or the global hotkey."""
+        self.root.withdraw()
+
     def get_user_email(self):
         return self.last_snapshot.claude.account if self.last_snapshot else ""
 
@@ -214,7 +218,7 @@ class QuotaHUDApp:
         # e fechar; este botão mantém a ação acessível dentro do HUD.
         minimize_btn = tk.Label(header, text="—", font=("Segoe UI", 14, "bold"), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
         minimize_btn.pack(side="right", padx=(8, 0))
-        minimize_btn.bind("<Button-1>", lambda e: self.root.iconify())
+        minimize_btn.bind("<Button-1>", self.minimize_window)
 
         # Botoes: Pin (Sempre no topo), minimizar e fechar
         close_btn = tk.Label(header, text="✕", font=("Segoe UI", 14, "bold"), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")

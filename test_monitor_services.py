@@ -177,7 +177,8 @@ class MonitorServicesTests(unittest.TestCase):
         self.assertIn("self.root.overrideredirect(True)", source)
         self.assertIn("self.root.resizable(False, False)", source)
         self.assertIn("self.root.minsize(360, 300)", source)
-        self.assertIn("self.root.iconify()", source)
+        self.assertIn("self.root.withdraw()", source)
+        self.assertIn("def minimize_window(self, event=None):", source)
         self.assertIn("def do_resize(self, event):", source)
 
     def test_gui_configures_dark_native_chrome_and_icon(self):

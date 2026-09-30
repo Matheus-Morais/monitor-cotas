@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor de Cotas</title>
+  <style>
+    :root {
+      --bg-main: #0e0f17;
+      --bg-card: rgba(22, 24, 37, 0.88);
+      --bg-card-hover: rgba(28, 30, 48, 0.95);
+      --bg-bar: #232536;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-highlight: rgba(137, 220, 235, 0.3);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --color-green: #34d399;
+      --color-yellow: #fbbf24;
+      --color-red: #f87171;
+      --color-cyan: #38bdf8;
+      --color-purple: #c084fc;
+      --radius-card: 12px;
+      --radius-ring: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      overflow-x: hidden;
+      overflow-y: auto;
+      height: 100vh;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    body.mode-avatar {
+      background: transparent !important;
+      border: none !important;
+      border-radius: 50% !important;
+      overflow: hidden !important;
+      box-shadow: none !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-bar);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Header Bar */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(14, 15, 23, 0.96);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+    }
+
+    .drag-region {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: grab;
+    }
+    .drag-region:active {
+      cursor: grabbing;
+    }
+
+    .app-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #fff;
+    }
+
+    .app-title .bolt {
+      color: #fbbf24;
+      font-size: 13px;
+      filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.5));
+    }
+
+    .status-badge {
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-green);
+      box-shadow: 0 0 6px var(--color-green);
+      animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      transition: all 0.15s ease;
+    }
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+    .icon-btn.active {
+      color: var(--color-cyan);
+      background: rgba(56, 189, 248, 0.12);
+    }
+    .icon-btn.close-btn:hover {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    .spin {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Main Content Container */
+    .content {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    /* Provider Card */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-card);
+      padding: 10px 12px;
+      transition: all 0.2s ease;
+      position: relative;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+      background: var(--bg-card-hover);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .provider-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .dot-agy { background: var(--color-cyan); box-shadow: 0 0 8px var(--color-cyan); }
+    .dot-claude { background: var(--color-green); box-shadow: 0 0 8px var(--color-green); }
+    .dot-codex { background: var(--color-purple); box-shadow: 0 0 8px var(--color-purple); }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.2px;
+    }
+
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .account-badge {
+      font-size: 10px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      max-width: 170px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .action-btn {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .action-btn.active-account {
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--color-green);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      cursor: default;
+    }
+    .action-btn.inactive-account {
+      background: var(--color-green);
+      color: #0b0f19;
+    }
+    .action-btn.inactive-account:hover {
+      background: #6ee7b7;
+      transform: translateY(-1px);
+    }
+
+    .toggle-collapse-btn {
+      color: var(--text-dim);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .toggle-collapse-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Metrics Container (Responsive Grid / Flex) */
+    .metrics-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      padding: 4px 0 2px 0;
+      transition: all 0.3s ease;
+    }
+
+    .metric-tile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      position: relative;
+      cursor: default;
+      transition: transform 0.15s ease;
+    }
+    .metric-tile:hover {
+      transform: translateY(-2px);
+    }
+
+    .metric-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* SVG Progress Ring */
+    .ring-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .progress-ring {
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    .progress-ring-bg {
+      stroke: var(--bg-bar);
+    }
+
+    .progress-ring-circle {
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), stroke 0.4s ease;
+    }
+
+    .ring-text {
+      position: absolute;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      text-align: center;
+    }
+
+    .metric-reset {
+      font-size: 9px;
+      color: var(--color-cyan);
+      font-weight: 600;
+      min-height: 12px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .empty-metrics-msg {
+      font-size: 11px;
+      font-style: italic;
+      color: var(--text-dim);
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      width: 100%;
+    }
+    .empty-metrics-msg:hover {
+      color: var(--color-cyan);
+    }
+
+    /* Tooltip */
+    .custom-tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e202f;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 10px;
+      white-space: pre-line;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      z-index: 100;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+      line-height: 1.4;
+      min-width: 160px;
+      text-align: left;
+    }
+    .metric-tile:hover .custom-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(-2px);
+    }
+
+    /* Footer */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      background: rgba(14, 15, 23, 0.95);
+      border-top: 1px solid var(--border-color);
+      font-size: 9px;
+      color: var(--text-dim);
+    }
+
+    .resize-grip {
+      cursor: nwse-resize;
+      font-size: 11px;
+      color: var(--text-dim);
+      transition: color 0.15s;
+    }
+    .resize-grip:hover {
+      color: #fff;
+    }
+
+    /* Modal Dialog */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(8, 9, 14, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: #161724;
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      width: 90%;
+      max-width: 440px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: modalPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes modalPop {
+      0% { transform: scale(0.92); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .modal-body {
+      padding: 14px 18px;
+      max-height: 380px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-provider-sec {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .modal-provider-title {
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+    }
+    .toggle-row:last-child {
+      border-bottom: none;
+    }
+    .toggle-label {
+      font-size: 11px;
+      color: var(--text-main);
+    }
+    .toggle-sub {
+      font-size: 9px;
+      color: var(--text-dim);
+    }
+
+    /* Switch Component */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 18px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: var(--bg-bar);
+      transition: .2s;
+      border-radius: 18px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: var(--color-cyan);
+    }
+    input:checked + .slider:before {
+      transform: translateX(16px);
+    }
+
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      background: rgba(14, 15, 23, 0.8);
+    }
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-secondary {
+      background: var(--bg-bar);
+      color: var(--text-main);
+    }
+    .btn-secondary:hover {
+      background: #334155;
+    }
+    .btn-primary {
+      background: var(--color-cyan);
+      color: #0b0f19;
+      font-weight: 700;
+    }
+    .btn-primary:hover {
+      background: #7dd3fc;
+    }
+
+    @media (max-width: 440px) {
+      .header {
+        padding: 7px 10px;
+      }
+      .status-badge span {
+        display: none;
+      }
+      .status-badge {
+        padding: 4px;
+      }
+      .account-badge {
+        max-width: 90px;
+        font-size: 9px;
+      }
+      .card {
+        padding: 7px 9px;
+      }
+      .card-title {
+        font-size: 11px;
+      }
+      .icon-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+      }
+    }
+
+    @media (max-width: 330px) {
+      .app-title .title-text {
+        display: none;
+      }
+      .account-badge {
+        max-width: 55px;
+      }
+      .window-controls {
+        gap: 2px;
+      }
+      .card-actions {
+        gap: 3px;
+      }
+    }
+
+    /* Avatar View */
+    .avatar-view {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0d0e17;
+      border-radius: 50%;
+      overflow: hidden;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .avatar-view:active {
+      cursor: grabbing;
+    }
+    .avatar-disc {
+      width: 72px;
+      height: 72px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .avatar-disc:hover {
+      transform: scale(1.08);
+    }
+    .avatar-svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+    }
+    .avatar-bolt-text {
+      font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Avatar Mode View (Floating Lightning Bolt Widget) -->
+  <div id="avatarView" class="avatar-view pywebview-drag-region" style="display: none;">
+    <div class="avatar-disc" id="avatarDisc">
+      <svg viewBox="0 0 72 72" class="avatar-svg" id="avatarSvg">
+        <defs>
+          <filter id="boltGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#fbbf24" flood-opacity="0.8"/>
+          </filter>
+        </defs>
+        <!-- Dark Base -->
+        <circle cx="36" cy="36" r="34" fill="#0d0e17" stroke="#1f2233" stroke-width="2" />
+        <!-- Arc Track Background -->
+        <circle cx="36" cy="36" r="28" fill="none" stroke="#1b1c2b" stroke-width="4.5" />
+        <!-- 3 Colored Health Arcs -->
+        <path id="avatarArcAgy" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <path id="avatarArcClaude" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <path id="avatarArcCodex" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <!-- Inner Core Disc -->
+        <circle cx="36" cy="36" r="21" fill="#141522" stroke="#2a2c42" stroke-width="1.5" />
+        <!-- Lightning Bolt Icon -->
+        <text x="36" y="44" font-size="22" text-anchor="middle" fill="#fbbf24" filter="url(#boltGlow)" class="avatar-bolt-text">⚡</text>
+      </svg>
+    </div>
+  </div>
+
+  <div id="panelView" style="display: flex; flex-direction: column; height: 100%;">
+    <!-- Titlebar Header -->
+    <header class="header">
+      <div class="drag-region pywebview-drag-region">
+        <div class="app-title">
+          <span class="bolt">⚡</span> <span class="title-text">COTA MONITOR</span>
+        </div>
+        <div class="status-badge">
+          <div class="status-dot"></div>
+          <span id="headerStatusText">Carregando...</span>
+        </div>
+      </div>
+      <div class="window-controls">
+        <button class="icon-btn" id="refreshBtn" title="Atualizar dados agora" onclick="handleRefresh()">↻</button>
+        <button class="icon-btn" id="configBtn" title="Personalizar rodas visíveis" onclick="openConfigModal()">⚙</button>
+        <button class="icon-btn" id="pinBtn" title="Fixar no topo" onclick="togglePin()">📌</button>
+        <button class="icon-btn" id="minimizeBtn" title="Alternar para o modo Avatar (Raio)" onclick="toggleMode()">—</button>
+        <button class="icon-btn close-btn" title="Fechar" onclick="closeApp()">✕</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="content" id="cardsContainer">
+      <!-- Cards will be populated dynamically -->
+    </main>
+
+    <!-- Footer with status & resize grip -->
+    <footer class="footer">
+      <span>Ctrl+Shift+C para alternar  •  Arraste as bordas para redimensionar</span>
+      <span class="resize-grip">◿</span>
+    </footer>
+  </div>
+
+  <!-- Wheel Customizer Modal -->
+  <div class="modal-overlay" id="configModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚙</span> Personalizar Rodas de Cotas
+        </div>
+        <button class="icon-btn" onclick="closeConfigModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalOptionsList">
+        <!-- Injected dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="restoreDefaultMetrics()">Restaurar Padrões</button>
+        <button class="btn btn-primary" onclick="closeConfigModal()">Concluir</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State Store
+    let currentSnapshots = {};
+    let currentConfig = {
+      visible_metrics: {
+        agy: ["gemini_5h", "gemini_weekly", "3p_5h"],
+        claude1: ["five_hour", "seven_day"],
+        claude2: ["five_hour", "seven_day"],
+        codex: ["five_hour", "seven_day"]
+      },
+      collapsed_cards: {}
+    };
+
+    const PROVIDER_METRICS = {
+      agy: [
+        { key: "gemini_5h", label: "5h", full: "Gemini 5 horas" },
+        { key: "gemini_weekly", label: "7d", full: "Gemini 7 dias" },
+        { key: "3p_5h", label: "3p", full: "Modelos Claude/GPT (3P)" }
+      ],
+      claude1: [
+        { key: "five_hour", label: "5h", full: "Limite de 5 horas" },
+        { key: "seven_day", label: "7d", full: "Limite de 7 dias" },
+        { key: "context", label: "ctx", full: "Janela de contexto" },
+        { key: "tokens", label: "tokens", full: "Tokens disponíveis" }
+      ],
+      claude2: [
+        { key: "five_hour", label: "5h", full: "Limite de 5 horas" },
+        { key: "seven_day", label: "7d", full: "Limite de 7 dias" },
+        { key: "context", label: "ctx", full: "Janela de contexto" },
+        { key: "tokens", label: "tokens", full: "Tokens disponíveis" }
+      ],
+      codex: [
+        { key: "five_hour", label: "5h", full: "Janela de 5 horas" },
+        { key: "seven_day", label: "7d", full: "Janela semanal de 7 dias" },
+        { key: "tokens_5h", label: "tokens", full: "Tokens observados" }
+      ]
+    };
+
+    const PROVIDER_INFO = {
+      agy: { name: "Antigravity", dotClass: "dot-agy", color: "#38bdf8" },
+      claude1: { name: "Claude Code 1", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 1 },
+      claude2: { name: "Claude Code 2", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 2 },
+      codex: { name: "Codex", dotClass: "dot-codex", color: "#c084fc" }
+    };
+
+    function getHealthColor(pct) {
+      if (pct === null || pct === undefined) return "#94a3b8";
+      if (pct <= 15) return "#f87171";
+      if (pct <= 35) return "#fbbf24";
+      return "#34d399";
+    }
+
+    function formatCountdown(resetAt) {
+      if (!resetAt) return "";
+      const now = Date.now() / 1000;
+      let target = typeof resetAt === "string" ? new Date(resetAt).getTime() / 1000 : resetAt;
+      if (isNaN(target)) return "";
+      const diff = Math.max(0, Math.floor(target - now));
+      if (diff <= 0) return "Resetado";
+      const hours = Math.floor(diff / 3600);
+      const mins = Math.floor((diff % 3600) / 60);
+      if (hours > 0) return `${hours}h ${mins.toString().padStart(2, "0")}m`;
+      if (mins > 0) return `${mins}m`;
+      return `${diff}s`;
+    }
+
+    function calcRingParams(numMetrics) {
+      const windowWidth = document.body.clientWidth || window.innerWidth;
+      const isNarrow = windowWidth < 380;
+      const isUltraNarrow = windowWidth < 310;
+
+      if (numMetrics <= 2) {
+        if (isUltraNarrow) return { size: 46, stroke: 4, radius: 17 };
+        if (isNarrow) return { size: 52, stroke: 4.5, radius: 20 };
+        return { size: 62, stroke: 5, radius: 24 };
+      }
+      if (numMetrics === 3) {
+        if (isUltraNarrow) return { size: 38, stroke: 3.5, radius: 14 };
+        if (isNarrow) return { size: 44, stroke: 4, radius: 16 };
+        return { size: 54, stroke: 4.5, radius: 21 };
+      }
+      // 4 or more
+      if (isUltraNarrow) return { size: 32, stroke: 3, radius: 11 };
+      if (isNarrow) return { size: 36, stroke: 3.5, radius: 13 };
+      return { size: 44, stroke: 4, radius: 16 };
+    }
+
+    function renderCards() {
+      const container = document.getElementById("cardsContainer");
+      container.innerHTML = "";
+
+      for (const [providerKey, info] of Object.entries(PROVIDER_INFO)) {
+        const snapshot = currentSnapshots[providerKey] || {};
+        const isCollapsed = currentConfig.collapsed_cards[providerKey] || false;
+        const visibleKeys = currentConfig.visible_metrics[providerKey] || [];
+        const allDefs = PROVIDER_METRICS[providerKey] || [];
+        const activeDefs = allDefs.filter(d => visibleKeys.includes(d.key));
+        const numMetrics = activeDefs.length;
+        const ringParams = calcRingParams(numMetrics);
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        // Card Header
+        let subText = "Carregando...";
+        if (snapshot && snapshot.status) {
+          subText = snapshot.account || snapshot.plan || "Disponível";
+          if (snapshot.status !== "ok") {
+            subText = snapshot.status === "unavailable" ? "Sem dados" : "Erro na leitura";
+          }
+        }
+
+        let actionHtml = "";
+        if (info.hasSwitch) {
+          const isActive = snapshot.is_active_account;
+          actionHtml = `<button class="action-btn ${isActive ? 'active-account' : 'inactive-account'}" 
+            onclick="switchClaude(${info.switchNum})">${isActive ? '✓ Ativa' : 'Ativar'}</button>`;
+        }
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="provider-dot ${info.dotClass}"></div>
+              <span class="card-title">${info.name}</span>
+            </div>
+            <div class="card-actions">
+              ${actionHtml}
+              <span class="account-badge" title="${subText}">${subText}</span>
+              <button class="toggle-collapse-btn" onclick="toggleCard('${providerKey}')">${isCollapsed ? '▸' : '▾'}</button>
+            </div>
+          </div>
+        `;
+
+        // Body
+        if (!isCollapsed) {
+          const body = document.createElement("div");
+          body.className = "metrics-container";
+          
+          const windowWidth = document.body.clientWidth || window.innerWidth;
+          if (windowWidth < 340) {
+            body.style.gap = numMetrics <= 2 ? "14px" : (numMetrics === 3 ? "8px" : "5px");
+          } else if (windowWidth < 420) {
+            body.style.gap = numMetrics <= 2 ? "22px" : (numMetrics === 3 ? "14px" : "10px");
+          } else {
+            body.style.gap = numMetrics <= 2 ? "32px" : (numMetrics === 3 ? "20px" : "12px");
+          }
+
+          if (numMetrics === 0) {
+            body.innerHTML = `<div class="empty-metrics-msg" onclick="openConfigModal()">Nenhuma roda ativa (clique para escolher)</div>`;
+          } else {
+            for (const def of activeDefs) {
+              const metric = snapshot.metrics ? snapshot.metrics[def.key] : null;
+              const pct = metric ? metric.remaining_pct : null;
+              const color = getHealthColor(pct);
+              const resetHint = metric ? formatCountdown(metric.reset_at) : "";
+              const circumference = 2 * Math.PI * ringParams.radius;
+              const offset = pct !== null && pct !== undefined 
+                ? circumference - (pct / 100) * circumference 
+                : circumference;
+
+              const tile = document.createElement("div");
+              tile.className = "metric-tile";
+              tile.innerHTML = `
+                <span class="metric-label">${def.label}</span>
+                <div class="ring-wrapper" style="width: ${ringParams.size}px; height: ${ringParams.size}px;">
+                  <svg class="progress-ring" width="${ringParams.size}" height="${ringParams.size}">
+                    <circle class="progress-ring-bg" stroke-width="${ringParams.stroke}" fill="transparent"
+                      r="${ringParams.radius}" cx="${ringParams.size / 2}" cy="${ringParams.size / 2}"/>
+                    <circle class="progress-ring-circle" stroke="${color}" stroke-width="${ringParams.stroke}" fill="transparent"
+                      r="${ringParams.radius}" cx="${ringParams.size / 2}" cy="${ringParams.size / 2}"
+                      style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${offset};"/>
+                  </svg>
+                  <span class="ring-text" style="color: ${color};">
+                    ${pct !== null && pct !== undefined ? pct + '%' : 'N/D'}
+                  </span>
+                </div>
+                <span class="metric-reset">${resetHint ? '⏱ ' + resetHint : ''}</span>
+                <div class="custom-tooltip">${def.full}
+Disponível: ${pct !== null ? pct + '%' : 'N/D'}
+Redefinição: ${resetHint || 'sem dados'}
+${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
+              `;
+              body.appendChild(tile);
+            }
+          }
+          card.appendChild(body);
+        }
+
+        container.appendChild(card);
+      }
+    }
+
+    // Modal Builder
+    function renderModalOptions() {
+      const container = document.getElementById("modalOptionsList");
+      container.innerHTML = "";
+
+      for (const [providerKey, defs] of Object.entries(PROVIDER_METRICS)) {
+        const info = PROVIDER_INFO[providerKey];
+        const visibleKeys = currentConfig.visible_metrics[providerKey] || [];
+
+        const sec = document.createElement("div");
+        sec.className = "modal-provider-sec";
+        sec.innerHTML = `
+          <div class="modal-provider-title">
+            <div class="provider-dot ${info.dotClass}"></div>
+            <span>${info.name}</span>
+          </div>
+        `;
+
+        for (const def of defs) {
+          const isChecked = visibleKeys.includes(def.key);
+          const row = document.createElement("div");
+          row.className = "toggle-row";
+          row.onclick = () => toggleMetricSetting(providerKey, def.key);
+          row.innerHTML = `
+            <div>
+              <div class="toggle-label">[${def.label}] ${def.full}</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation(); toggleMetricSetting('${providerKey}', '${def.key}')">
+              <span class="slider"></span>
+            </label>
+          `;
+          sec.appendChild(row);
+        }
+        container.appendChild(sec);
+      }
+    }
+
+    function toggleMetricSetting(providerKey, metricKey) {
+      if (!window.pywebview) return;
+      window.pywebview.api.toggle_metric(providerKey, metricKey).then(newConfig => {
+        currentConfig = newConfig;
+        renderCards();
+        renderModalOptions();
+      });
+    }
+
+    function restoreDefaultMetrics() {
+      if (!window.pywebview) return;
+      window.pywebview.api.reset_all_metrics().then(newConfig => {
+        currentConfig = newConfig;
+        renderCards();
+        renderModalOptions();
+      });
+    }
+
+    function toggleCard(cardKey) {
+      currentConfig.collapsed_cards[cardKey] = !currentConfig.collapsed_cards[cardKey];
+      renderCards();
+      if (window.pywebview) {
+        window.pywebview.api.save_collapsed(currentConfig.collapsed_cards);
+      }
+    }
+
+    function switchClaude(accountNum) {
+      if (!window.pywebview) return;
+      window.pywebview.api.switch_claude(accountNum).then(() => {
+        handleRefresh();
+      });
+    }
+
+    async function handleRefresh() {
+      const btn = document.getElementById("refreshBtn");
+      btn.classList.add("spin");
+      document.getElementById("headerStatusText").innerText = "Atualizando...";
+      if (window.pywebview && window.pywebview.api) {
+        try {
+          const snaps = await window.pywebview.api.force_refresh();
+          if (snaps && Object.keys(snaps).length > 0) {
+            currentSnapshots = snaps;
+            renderCards();
+          }
+        } catch (e) {
+          console.error("Refresh error:", e);
+        }
+      }
+      setTimeout(() => {
+        btn.classList.remove("spin");
+        document.getElementById("headerStatusText").innerText = "Atualizado";
+      }, 500);
+    }
+
+    let currentMode = "panel";
+
+    function describeArc(cx, cy, radius, startAngle, endAngle) {
+      const start = polarToCartesian(cx, cy, radius, endAngle);
+      const end = polarToCartesian(cx, cy, radius, startAngle);
+      const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+      return [
+        "M", start.x, start.y,
+        "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y
+      ].join(" ");
+    }
+
+    function polarToCartesian(cx, cy, radius, angleInDegrees) {
+      const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+      return {
+        x: cx + (radius * Math.cos(angleInRadians)),
+        y: cy + (radius * Math.sin(angleInRadians))
+      };
+    }
+
+    function getProviderHealth(providerKey) {
+      const snapshot = currentSnapshots[providerKey];
+      if (!snapshot || snapshot.status !== "ok") return { color: "#64748b", pct: null };
+      const visibleKeys = (currentConfig.visible_metrics && currentConfig.visible_metrics[providerKey]) || [];
+      const metrics = snapshot.metrics || {};
+      let minPct = null;
+      for (const key of visibleKeys) {
+        const m = metrics[key];
+        if (m && m.remaining_pct !== null && m.remaining_pct !== undefined) {
+          if (minPct === null || m.remaining_pct < minPct) {
+            minPct = m.remaining_pct;
+          }
+        }
+      }
+      if (minPct === null) return { color: "#64748b", pct: null };
+      if (minPct <= 10) return { color: "#f87171", pct: minPct };
+      if (minPct <= 30) return { color: "#fbbf24", pct: minPct };
+      return { color: "#34d399", pct: minPct };
+    }
+
+    function renderAvatar() {
+      const agyH = getProviderHealth("agy");
+      const c1 = currentSnapshots["claude1"];
+      const c2 = currentSnapshots["claude2"];
+      const activeClaudeKey = (c2 && c2.is_active_account) ? "claude2" : "claude1";
+      const claudeH = getProviderHealth(activeClaudeKey);
+      const codexH = getProviderHealth("codex");
+
+      const arcAgy = describeArc(36, 36, 28, 10, 110);
+      const arcClaude = describeArc(36, 36, 28, 130, 230);
+      const arcCodex = describeArc(36, 36, 28, 250, 350);
+
+      const elAgy = document.getElementById("avatarArcAgy");
+      const elClaude = document.getElementById("avatarArcClaude");
+      const elCodex = document.getElementById("avatarArcCodex");
+
+      if (elAgy) {
+        elAgy.setAttribute("d", arcAgy);
+        elAgy.setAttribute("stroke", agyH.color);
+      }
+      if (elClaude) {
+        elClaude.setAttribute("d", arcClaude);
+        elClaude.setAttribute("stroke", claudeH.color);
+      }
+      if (elCodex) {
+        elCodex.setAttribute("d", arcCodex);
+        elCodex.setAttribute("stroke", codexH.color);
+      }
+
+      const disc = document.getElementById("avatarDisc");
+      if (disc) {
+        disc.removeAttribute("title");
+      }
+    }
+
+    function applyMode(mode) {
+      currentMode = mode;
+      const panelView = document.getElementById("panelView");
+      const avatarView = document.getElementById("avatarView");
+      if (mode === "avatar") {
+        document.body.classList.add("mode-avatar");
+        if (panelView) panelView.style.display = "none";
+        if (avatarView) avatarView.style.display = "flex";
+        renderAvatar();
+      } else {
+        document.body.classList.remove("mode-avatar");
+        if (avatarView) avatarView.style.display = "none";
+        if (panelView) panelView.style.display = "flex";
+        renderCards();
+      }
+    }
+
+    function toggleMode() {
+      if (window.pywebview && window.pywebview.api) {
+        window.pywebview.api.toggle_mode().then(res => {
+          if (res && res.mode) {
+            applyMode(res.mode);
+          }
+        });
+      }
+    }
+
+    function togglePin() {
+      const btn = document.getElementById("pinBtn");
+      if (window.pywebview) {
+        window.pywebview.api.toggle_pin().then(isPinned => {
+          btn.classList.toggle("active", isPinned);
+        });
+      }
+    }
+
+    function minimizeApp() {
+      toggleMode();
+    }
+    const minimizeToAvatar = toggleMode;
+
+    function closeApp() {
+      if (window.pywebview) {
+        window.pywebview.api.close();
+      }
+    }
+
+    function openConfigModal() {
+      renderModalOptions();
+      document.getElementById("configModal").classList.add("open");
+    }
+
+    function closeConfigModal() {
+      document.getElementById("configModal").classList.remove("open");
+    }
+
+    // Avatar click vs drag detection
+    let avatarPointerStart = null;
+    let avatarDidDrag = false;
+    const avatarDisc = document.getElementById("avatarDisc");
+    if (avatarDisc) {
+      avatarDisc.addEventListener("mousedown", (e) => {
+        avatarPointerStart = { x: e.screenX, y: e.screenY };
+        avatarDidDrag = false;
+      });
+      avatarDisc.addEventListener("mousemove", (e) => {
+        if (avatarPointerStart) {
+          if (Math.abs(e.screenX - avatarPointerStart.x) > 6 || Math.abs(e.screenY - avatarPointerStart.y) > 6) {
+            avatarDidDrag = true;
+          }
+        }
+      });
+      avatarDisc.addEventListener("mouseup", (e) => {
+        if (!avatarDidDrag && avatarPointerStart) {
+          toggleMode();
+        }
+        avatarPointerStart = null;
+        avatarDidDrag = false;
+      });
+    }
+
+    // Initialization hook from pywebview
+    window.addEventListener("pywebviewready", async function() {
+      try {
+        const data = await window.pywebview.api.init();
+        if (data) {
+          currentConfig = data.config || currentConfig;
+          currentSnapshots = data.snapshots || {};
+          const initialMode = (window.innerWidth <= 120 || (data.config && data.config.ui_mode === "avatar")) ? "avatar" : "panel";
+          applyMode(initialMode);
+          document.getElementById("headerStatusText").innerText = "Atualizado";
+        }
+      } catch (err) {
+        console.error("Init error:", err);
+      }
+
+      // Smooth background polling every 3 seconds from JS (never deadlocks)
+      setInterval(async () => {
+        try {
+          if (window.pywebview && window.pywebview.api) {
+            const snaps = await window.pywebview.api.get_snapshots();
+            if (snaps && Object.keys(snaps).length > 0) {
+              currentSnapshots = snaps;
+              if (currentMode === "panel") {
+                renderCards();
+              } else {
+                renderAvatar();
+              }
+              const st = document.getElementById("headerStatusText");
+              if (st) st.innerText = "Atualizado";
+            }
+          }
+        } catch (e) {
+          // ignore transient poll errors
+        }
+      }, 3000);
+    });
+
+    window.addEventListener("resize", () => {
+      const mode = (window.innerWidth <= 120) ? "avatar" : "panel";
+      if (mode !== currentMode) {
+        applyMode(mode);
+      } else if (mode === "panel") {
+        renderCards();
+      } else {
+        renderAvatar();
+      }
+    });
+
+    // Initial render before backend is ready
+    renderCards();
+  </script>
+</body>
+</html>

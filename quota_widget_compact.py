@@ -17,19 +17,77 @@ import keyboard
 from quota_core import (
     OK,
     ERROR,
+    ProviderSnapshot,
     format_countdown,
     load_agy_snapshot,
     load_claude_snapshot,
     load_codex_snapshot,
 )
-from quota_ui_state import load_ui_config, save_ui_config
+from quota_ui_state import (
+    DEFAULT_VISIBLE_METRICS,
+    load_ui_config,
+    save_ui_config,
+)
 
 
+PROVIDER_METRIC_DEFINITIONS: dict[str, list[tuple[str, str, str]]] = {
+    "agy": [
+        ("5h", "gemini_5h", "Gemini 5 horas"),
+        ("7d", "gemini_weekly", "Gemini 7 dias"),
+        ("3p", "3p_5h", "Modelos Claude/GPT (3P)"),
+    ],
+    "claude1": [
+        ("5h", "five_hour", "Limite de 5 horas"),
+        ("7d", "seven_day", "Limite de 7 dias"),
+        ("ctx", "context", "Janela de contexto"),
+        ("tokens", "tokens", "Tokens disponíveis"),
+    ],
+    "claude2": [
+        ("5h", "five_hour", "Limite de 5 horas"),
+        ("7d", "seven_day", "Limite de 7 dias"),
+        ("ctx", "context", "Janela de contexto"),
+        ("tokens", "tokens", "Tokens disponíveis"),
+    ],
+    "codex": [
+        ("5h", "five_hour", "Janela de 5 horas"),
+        ("7d", "seven_day", "Janela semanal de 7 dias"),
+        ("tokens", "tokens_5h", "Tokens observados"),
+    ],
+}
+
+
+def calc_responsive_ring_size(num_metrics: int, compact: bool = False) -> int:
+    """Calculate responsive indicator diameter based on tile count and density."""
+    if num_metrics <= 0:
+        return 44 if compact else 52
+    if compact:
+        if num_metrics <= 2:
+            return 48
+        elif num_metrics == 3:
+            return 40
+        else:
+            return 36
+    else:
+        if num_metrics <= 2:
+            return 58
+        elif num_metrics == 3:
+            return 50
+        else:
+            return 44
+
+
+PROVIDER_TITLES: dict[str, str] = {
+    "agy": "Antigravity",
+    "claude1": "Claude Code 1",
+    "claude2": "Claude Code 2",
+    "codex": "Codex",
+}
 AGY_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\agy-statusline-input.json"
 CLAUDE_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\claude-statusline-input.json"
 CODEX_CONFIG = r"C:\Users\MOBILTEC\.codex\config.toml"
 CODEX_STATE_DB = r"C:\Users\MOBILTEC\.codex\state_5.sqlite"
 CODEX_HISTORY_DB = r"C:\Users\MOBILTEC\.codex\thread_history_1.sqlite"
+CODEX_ROLLOUTS_DIR = r"C:\Users\MOBILTEC\.codex\sessions"
 CONFIG_PATH = Path(sys.executable).with_name("config.json") if getattr(sys, "frozen", False) else Path(__file__).with_name("config.json")
 
 # Catppuccin Mocha palette, shared by the avatar, panel and tray icon.
@@ -61,6 +119,48 @@ def enable_windows_dpi_awareness() -> None:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except (AttributeError, OSError):
             pass
+
+
+def configure_taskbar_presence(root: tk.Misc) -> None:
+    """Keep the borderless HUD represented by a normal taskbar button."""
+    if sys.platform != "win32":
+        return
+    try:
+        from ctypes import wintypes
+        root.update_idletasks()
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        get_style = user32.GetWindowLongPtrW
+        set_style = user32.SetWindowLongPtrW
+        get_style.argtypes = [wintypes.HWND, ctypes.c_int]
+        get_style.restype = ctypes.c_void_p
+        set_style.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+        set_style.restype = ctypes.c_void_p
+
+        hwnd = root.winfo_id()
+        exstyle = int(get_style(hwnd, -20) or 0)  # GWL_EXSTYLE
+        exstyle = (exstyle | 0x00040000) & ~0x00000080  # WS_EX_APPWINDOW, not TOOLWINDOW
+        set_style(hwnd, -20, exstyle)
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0037)
+    except (AttributeError, OSError):
+        pass
+
+
+def apply_windows_window_effects(root: tk.Misc) -> None:
+    """Apply Windows 11 rounded corners and dark mode frame attributes via DWM."""
+    if sys.platform != "win32":
+        return
+    try:
+        root.update_idletasks()
+        hwnd = root.winfo_id()
+        dwmapi = ctypes.WinDLL("dwmapi")
+        corner_pref = ctypes.c_int(2)  # DWMWCP_ROUND
+        dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(corner_pref), ctypes.sizeof(corner_pref))
+        dark_mode = ctypes.c_int(1)
+        dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode))
+        border_color = ctypes.c_int(0x005A4745)
+        dwmapi.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border_color), ctypes.sizeof(border_color))
+    except (AttributeError, OSError):
+        pass
 
 
 def percentage_to_arc(remaining_pct: int | float | None) -> int | None:
@@ -209,6 +309,12 @@ class CircularProgressWidget(tk.Canvas):
         self.value = pct
         self._draw(pct, metric_color(pct))
 
+    def set_size(self, size: int) -> None:
+        if self.size != size:
+            self.size = size
+            self.config(width=size, height=size)
+            self._draw(self.value, metric_color(self.value))
+
 
 class AvatarSurface(tk.Canvas):
     """Draggable, click-to-open compact surface."""
@@ -290,6 +396,8 @@ class QuotaHUDApp:
         self.controls = {}
         self.collapsed_cards = self.config.get("collapsed_cards", {})
         self._save_job = None
+        self._fetching = False
+        self._last_fetch = 0.0
         self.hotkey_handle = None
         self.tray_icon = None
         self.is_topmost = True
@@ -317,6 +425,9 @@ class QuotaHUDApp:
         mode = mode if mode in {"avatar", "panel"} else "avatar"
         same_mode = mode == self.mode
         if not initial and not force and same_mode:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
             return
         if not initial and self.mode == "panel" and not same_mode:
             self._capture_panel_geometry()
@@ -330,6 +441,8 @@ class QuotaHUDApp:
         else:
             self._show_panel()
         self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
         if not initial:
             self.save_preferences()
         self._render_snapshots()
@@ -367,11 +480,154 @@ class QuotaHUDApp:
 
         outer = tk.Frame(self.root, bg=BORDER_COLOR, padx=1, pady=1)
         outer.pack(fill="both", expand=True)
-        self.main_frame = tk.Frame(outer, bg=BG_MAIN, padx=12, pady=9)
+        self.main_frame = tk.Frame(outer, bg=BG_MAIN, padx=12, pady=8)
         self.main_frame.pack(fill="both", expand=True)
         self._setup_header()
         self._setup_sections()
+        self._setup_footer()
+        configure_taskbar_presence(self.root)
+        apply_windows_window_effects(self.root)
+        self._setup_window_resizing(outer)
         self.root.bind("<Configure>", self._on_configure, add="+")
+
+    def _setup_footer(self) -> None:
+        footer = tk.Frame(self.main_frame, bg=BG_MAIN)
+        footer.pack(fill="x", side="bottom", pady=(4, 0))
+        hint = tk.Label(
+            footer,
+            text="Ctrl+Shift+C para alternar  •  Arraste bordas para redimensionar",
+            font=("Segoe UI", 7),
+            fg="#585b70",
+            bg=BG_MAIN,
+        )
+        hint.pack(side="left")
+
+        grip = tk.Label(footer, text="◿", font=("Segoe UI", 10, "bold"), fg=BORDER_COLOR, bg=BG_MAIN, cursor="size_nw_se")
+        grip.pack(side="right")
+        Tooltip(grip, "Arrastar para redimensionar o painel")
+
+        def start_grip_resize(event):
+            self._grip_drag = (event.x_root, event.y_root, self.root.winfo_width(), self.root.winfo_height())
+
+        def do_grip_resize(event):
+            if not hasattr(self, "_grip_drag"):
+                return
+            start_x, start_y, start_w, start_h = self._grip_drag
+            dx = event.x_root - start_x
+            dy = event.y_root - start_y
+            new_w = max(360, start_w + dx)
+            new_h = max(240, start_h + dy)
+            self.root.geometry(f"{new_w}x{new_h}+{self.root.winfo_x()}+{self.root.winfo_y()}")
+
+        def stop_grip_resize(_event):
+            if hasattr(self, "_grip_drag"):
+                del self._grip_drag
+                self.save_preferences()
+
+        grip.bind("<ButtonPress-1>", start_grip_resize)
+        grip.bind("<B1-Motion>", do_grip_resize)
+        grip.bind("<ButtonRelease-1>", stop_grip_resize)
+
+    def _setup_window_resizing(self, outer: tk.Frame) -> None:
+        """Enable edge and corner dragging to resize the borderless panel."""
+        self._resize_margin = 6
+        self._resize_mode = None
+        self._resize_start = None
+
+        def get_resize_mode(x, y, w, h):
+            m = self._resize_margin
+            mode = []
+            if y >= h - m:
+                mode.append("bottom")
+            elif y <= m:
+                mode.append("top")
+            if x >= w - m:
+                mode.append("right")
+            elif x <= m:
+                mode.append("left")
+            return tuple(mode)
+
+        def get_cursor(mode):
+            if not mode:
+                return "arrow"
+            if ("bottom" in mode and "right" in mode) or ("top" in mode and "left" in mode):
+                return "size_nw_se"
+            if ("bottom" in mode and "left" in mode) or ("top" in mode and "right" in mode):
+                return "size_ne_sw"
+            if "bottom" in mode or "top" in mode:
+                return "size_ns"
+            if "right" in mode or "left" in mode:
+                return "size_we"
+            return "arrow"
+
+        def on_motion(event):
+            if self._resize_mode is not None:
+                return
+            w = self.root.winfo_width()
+            h = self.root.winfo_height()
+            rel_x = event.x_root - self.root.winfo_x()
+            rel_y = event.y_root - self.root.winfo_y()
+            mode = get_resize_mode(rel_x, rel_y, w, h)
+            cursor = get_cursor(mode)
+            try:
+                outer.config(cursor=cursor)
+            except tk.TclError:
+                pass
+
+        def on_press(event):
+            w = self.root.winfo_width()
+            h = self.root.winfo_height()
+            rel_x = event.x_root - self.root.winfo_x()
+            rel_y = event.y_root - self.root.winfo_y()
+            mode = get_resize_mode(rel_x, rel_y, w, h)
+            if mode:
+                self._resize_mode = mode
+                self._resize_start = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y(), w, h)
+
+        def on_drag(event):
+            if not self._resize_mode or not self._resize_start:
+                return
+            start_xr, start_yr, start_wx, start_wy, start_w, start_h = self._resize_start
+            dx = event.x_root - start_xr
+            dy = event.y_root - start_yr
+            min_w, min_h = 360, 240
+            new_w, new_h = start_w, start_h
+            new_x, new_y = start_wx, start_wy
+
+            if "right" in self._resize_mode:
+                new_w = max(min_w, start_w + dx)
+            elif "left" in self._resize_mode:
+                proposed_w = start_w - dx
+                if proposed_w >= min_w:
+                    new_w = proposed_w
+                    new_x = start_wx + dx
+                else:
+                    new_w = min_w
+                    new_x = start_wx + (start_w - min_w)
+
+            if "bottom" in self._resize_mode:
+                new_h = max(min_h, start_h + dy)
+            elif "top" in self._resize_mode:
+                proposed_h = start_h - dy
+                if proposed_h >= min_h:
+                    new_h = proposed_h
+                    new_y = start_wy + dy
+                else:
+                    new_h = min_h
+                    new_y = start_wy + (start_h - min_h)
+
+            self.root.geometry(f"{new_w}x{new_h}+{new_x}+{new_y}")
+
+        def on_release(_event):
+            if self._resize_mode:
+                self._resize_mode = None
+                self._resize_start = None
+                self.save_preferences()
+
+        outer.bind("<Motion>", on_motion, add="+")
+        outer.bind("<ButtonPress-1>", on_press, add="+")
+        outer.bind("<B1-Motion>", on_drag, add="+")
+        outer.bind("<ButtonRelease-1>", on_release, add="+")
 
     def _setup_header(self) -> None:
         header = tk.Frame(self.main_frame, bg=BG_MAIN)
@@ -392,7 +648,11 @@ class QuotaHUDApp:
         compact.pack(side="right", padx=6)
         compact.bind("<Button-1>", self.toggle_compact)
         Tooltip(compact, "Alternar tamanho compacto do painel")
-        self.pin_btn = tk.Label(header, text="📌", font=("Segoe UI", 11), fg=COLOR_CYAN, bg=BG_MAIN, cursor="hand2")
+        gear = tk.Label(header, text="⚙", font=("Segoe UI", 12), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
+        gear.pack(side="right", padx=6)
+        gear.bind("<Button-1>", lambda _event: self.open_metrics_config())
+        Tooltip(gear, "Personalizar rodas de cotas visíveis")
+        self.pin_btn = tk.Label(header, text="📌", font=("Segoe UI", 11), fg=COLOR_CYAN if self.is_topmost else TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
         self.pin_btn.pack(side="right", padx=6)
         self.pin_btn.bind("<Button-1>", self.toggle_pin)
         refresh = tk.Label(header, text="↻", font=("Segoe UI", 15), fg=COLOR_CYAN, bg=BG_MAIN, cursor="hand2")
@@ -404,63 +664,346 @@ class QuotaHUDApp:
 
     def _setup_sections(self) -> None:
         self.controls = {}
-        self.controls["agy"] = self._create_card(
-            "agy", "Antigravity", COLOR_CYAN,
-            [("5h", "gemini_5h", "Gemini 5 horas"), ("7d", "gemini_weekly", "Gemini 7 dias"), ("3p", "3p_5h", "Modelos Claude/GPT no Antigravity")],
-        )
+        self.controls["agy"] = self._create_card("agy", PROVIDER_TITLES["agy"], COLOR_CYAN)
         self.controls["claude1"] = self._create_card(
-            "claude1", "Claude Code 1", COLOR_GREEN,
-            [("5h", "five_hour", "Limite de 5 horas"), ("7d", "seven_day", "Limite de 7 dias"), ("ctx", "context", "Janela de contexto"), ("tokens", "tokens", "Tokens disponíveis")],
-            action_cmd=self.switch_claude1,
+            "claude1", PROVIDER_TITLES["claude1"], COLOR_GREEN, action_cmd=self.switch_claude1
         )
         self.controls["claude2"] = self._create_card(
-            "claude2", "Claude Code 2", COLOR_GREEN,
-            [("5h", "five_hour", "Limite de 5 horas"), ("7d", "seven_day", "Limite de 7 dias"), ("ctx", "context", "Janela de contexto"), ("tokens", "tokens", "Tokens disponíveis")],
-            action_cmd=self.switch_claude2,
+            "claude2", PROVIDER_TITLES["claude2"], COLOR_GREEN, action_cmd=self.switch_claude2
         )
-        self.controls["codex"] = self._create_card(
-            "codex", "Codex", COLOR_PURPLE,
-            [("5h", "five_hour", "Janela de 5 horas"), ("tokens", "tokens_5h", "Tokens usados na janela de 5 horas"), ("7d", "seven_day", "Atividade dos últimos 7 dias")],
-        )
+        self.controls["codex"] = self._create_card("codex", PROVIDER_TITLES["codex"], COLOR_PURPLE)
 
-    def _create_card(self, card_key: str, title: str, accent: str, items, action_cmd=None):
+    def _create_card(self, card_key: str, title: str, accent: str, items=None, action_cmd=None):
         compact = bool(self.config.get("compact_mode"))
         card = tk.Frame(self.main_frame, bg=BG_CARD, padx=6 if compact else 8, pady=4 if compact else 6)
         card.pack(fill="x", pady=2 if compact else 3)
         header = tk.Frame(card, bg=BG_CARD)
         header.pack(fill="x")
-        tk.Label(header, text="●", font=("Segoe UI", 7 if compact else 8), fg=accent, bg=BG_CARD).pack(side="left", padx=(0, 3 if compact else 4))
-        tk.Label(header, text=title, font=("Segoe UI", 8 if compact else 9, "bold"), fg=TEXT_MAIN, bg=BG_CARD).pack(side="left")
+        dot = tk.Label(header, text="●", font=("Segoe UI", 7 if compact else 8), fg=accent, bg=BG_CARD)
+        dot.pack(side="left", padx=(0, 3 if compact else 4))
+        title_lbl = tk.Label(header, text=title, font=("Segoe UI", 8 if compact else 9, "bold"), fg=TEXT_MAIN, bg=BG_CARD)
+        title_lbl.pack(side="left")
+
         collapsed = bool(self.collapsed_cards.get(card_key, False))
         collapse_btn = tk.Label(header, text="▸" if collapsed else "▾", font=("Segoe UI", 10, "bold"), fg=TEXT_MUTED, bg=BG_CARD, cursor="hand2")
         collapse_btn.pack(side="right", padx=(4, 0))
         collapse_btn.bind("<Button-1>", lambda _event, key=card_key: self.toggle_card(key))
         Tooltip(collapse_btn, "Expandir/recolher esta assinatura")
+
+        gear_btn = tk.Label(header, text="⚙", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_CARD, cursor="hand2")
+        gear_btn.pack(side="right", padx=(4, 0))
+        gear_btn.bind("<Button-1>", lambda _event, key=card_key: self.open_metrics_config(key))
+        Tooltip(gear_btn, f"Personalizar rodas de {title}")
+
         sub_info = tk.Label(header, text="Aguardando", font=("Segoe UI", 7 if compact else 8), fg=TEXT_MUTED, bg=BG_CARD)
-        sub_info.pack(side="right")
+        sub_info.pack(side="right", padx=(6, 4))
         action_btn = None
         if action_cmd:
             action_btn = tk.Label(header, text=" Ativar ", font=("Segoe UI", 7 if compact else 8, "bold"), fg=BG_MAIN, bg=accent, cursor="hand2")
-            action_btn.pack(side="right", padx=(6, 0))
+            action_btn.pack(side="right", padx=(0, 6))
             action_btn.bind("<Button-1>", action_cmd)
 
         metrics_frame = tk.Frame(card, bg=BG_CARD)
         if not collapsed:
             metrics_frame.pack(fill="x", pady=(5, 0))
-        tiles = {}
-        for short_label, key, full_label in items:
-            tile = tk.Frame(metrics_frame, bg=BG_CARD)
-            tile.pack(side="left", expand=True, fill="x")
-            tk.Label(tile, text=short_label, font=("Segoe UI", 7 if compact else 8, "bold"), fg=TEXT_MUTED, bg=BG_CARD).pack()
-            indicator = CircularProgressWidget(tile, size=44 if compact else 54)
+
+        for w in (card, header, dot, title_lbl, sub_info, metrics_frame):
+            w.bind("<Button-3>", lambda event, key=card_key: self._show_card_context_menu(event, key))
+
+        control = {
+            "card": card,
+            "header": header,
+            "sub_info": sub_info,
+            "action_btn": action_btn,
+            "accent": accent,
+            "title": title,
+            "tiles": {},
+            "body": metrics_frame,
+            "collapse_btn": collapse_btn,
+            "card_key": card_key,
+        }
+        self.controls[card_key] = control
+        self._rebuild_card_tiles(card_key)
+        return control
+
+    def _rebuild_card_tiles(self, card_key: str) -> None:
+        if card_key not in self.controls:
+            return
+        control = self.controls[card_key]
+        metrics_frame = control["body"]
+        for child in list(metrics_frame.winfo_children()):
+            child.destroy()
+        control["tiles"] = {}
+
+        all_defs = PROVIDER_METRIC_DEFINITIONS.get(card_key, [])
+        visible_keys = self.config.get("visible_metrics", {}).get(card_key, [])
+        active_items = [item for item in all_defs if item[1] in visible_keys]
+        compact = bool(self.config.get("compact_mode"))
+        n = len(active_items)
+
+        if n == 0:
+            no_metrics_lbl = tk.Label(
+                metrics_frame,
+                text="Nenhuma roda selecionada (clique para escolher)",
+                font=("Segoe UI", 7 if compact else 8, "italic"),
+                fg=TEXT_MUTED,
+                bg=BG_CARD,
+                cursor="hand2",
+                pady=4,
+            )
+            no_metrics_lbl.pack(fill="x")
+            no_metrics_lbl.bind("<Button-1>", lambda _event, key=card_key: self.open_metrics_config(key))
+            no_metrics_lbl.bind("<Button-3>", lambda event, key=card_key: self._show_card_context_menu(event, key))
+            return
+
+        ring_size = calc_responsive_ring_size(n, compact=compact)
+
+        # Responsive horizontal spacing:
+        # Diminish spacing when there are fewer wheels (1 or 2), centering them neatly!
+        if n == 1:
+            pad_x = 0
+        elif n == 2:
+            pad_x = 16 if compact else 22
+        elif n == 3:
+            pad_x = 10 if compact else 15
+        else:
+            pad_x = 6 if compact else 8
+
+        row_container = tk.Frame(metrics_frame, bg=BG_CARD)
+        row_container.pack(anchor="center")
+        row_container.bind("<Button-3>", lambda event, k=card_key: self._show_card_context_menu(event, k))
+
+        for short_label, key, full_label in active_items:
+            tile = tk.Frame(row_container, bg=BG_CARD)
+            tile.pack(side="left", padx=pad_x)
+            lbl = tk.Label(tile, text=short_label, font=("Segoe UI", 7 if compact else 8, "bold"), fg=TEXT_MUTED, bg=BG_CARD)
+            lbl.pack()
+            indicator = CircularProgressWidget(tile, size=ring_size)
             indicator.pack(pady=0 if compact else 1)
             value = tk.Label(tile, text="N/D", font=("Segoe UI", 7 if compact else 8, "bold"), fg=TEXT_MUTED, bg=BG_CARD)
             value.pack()
             reset = tk.Label(tile, text="", font=("Segoe UI", 6 if compact else 7), fg=COLOR_CYAN, bg=BG_CARD)
             reset.pack()
             tooltip = Tooltip(tile)
-            tiles[key] = {"indicator": indicator, "value": value, "reset": reset, "tooltip": tooltip, "full_label": full_label}
-        return {"sub_info": sub_info, "action_btn": action_btn, "accent": accent, "tiles": tiles, "body": metrics_frame, "collapse_btn": collapse_btn, "card_key": card_key}
+            control["tiles"][key] = {
+                "indicator": indicator,
+                "value": value,
+                "reset": reset,
+                "tooltip": tooltip,
+                "full_label": full_label,
+            }
+            for w in (tile, lbl, indicator, value, reset):
+                w.bind("<Button-3>", lambda event, k=card_key: self._show_card_context_menu(event, k))
+
+        if self.snapshots and card_key in self.snapshots:
+            snapshot = self.snapshots[card_key]
+            claude = card_key in {"claude1", "claude2"}
+            self._update_card(card_key, snapshot, claude=claude)
+
+    def toggle_metric(self, card_key: str, metric_key: str) -> None:
+        """Toggle a specific metric's visibility for a provider card."""
+        visible = self.config.setdefault("visible_metrics", {})
+        prov_list = visible.setdefault(card_key, list(DEFAULT_VISIBLE_METRICS.get(card_key, [])))
+        if metric_key in prov_list:
+            prov_list.remove(metric_key)
+        else:
+            all_keys = [k for _, k, _ in PROVIDER_METRIC_DEFINITIONS.get(card_key, [])]
+            prov_list.append(metric_key)
+            prov_list.sort(key=lambda k: all_keys.index(k) if k in all_keys else 99)
+        self._rebuild_card_tiles(card_key)
+        self._fit_panel_to_content()
+        self.save_preferences()
+        if self.mode == "avatar" and hasattr(self, "avatar"):
+            self._render_snapshots()
+
+    def reset_card_metrics(self, card_key: str) -> None:
+        self.config.setdefault("visible_metrics", {})[card_key] = list(DEFAULT_VISIBLE_METRICS.get(card_key, []))
+        self._rebuild_card_tiles(card_key)
+        self._fit_panel_to_content()
+        self.save_preferences()
+        if self.mode == "avatar" and hasattr(self, "avatar"):
+            self._render_snapshots()
+
+    def reset_all_metrics(self) -> None:
+        self.config["visible_metrics"] = {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()}
+        for card_key in PROVIDER_METRIC_DEFINITIONS:
+            self._rebuild_card_tiles(card_key)
+        self._fit_panel_to_content()
+        self.save_preferences()
+        if self.mode == "avatar" and hasattr(self, "avatar"):
+            self._render_snapshots()
+
+    def _show_card_context_menu(self, event, card_key: str) -> None:
+        """Right-click popup menu to toggle wheels on the fly."""
+        menu = tk.Menu(self.root, tearoff=0, bg=BG_CARD, fg=TEXT_MAIN, activebackground=BG_BAR, activeforeground=TEXT_MAIN)
+        title = PROVIDER_TITLES.get(card_key, card_key)
+        menu.add_command(label=f"Rodas de {title}", state="disabled")
+        menu.add_separator()
+
+        all_defs = PROVIDER_METRIC_DEFINITIONS.get(card_key, [])
+        visible_keys = set(self.config.get("visible_metrics", {}).get(card_key, []))
+
+        for short_label, key, full_label in all_defs:
+            is_visible = key in visible_keys
+            mark = "✓  " if is_visible else "    "
+            menu.add_command(
+                label=f"{mark}[{short_label}] {full_label}",
+                command=lambda k=card_key, m=key: self.toggle_metric(k, m)
+            )
+
+        menu.add_separator()
+        menu.add_command(
+            label="Restaurar padrão deste card",
+            command=lambda k=card_key: self.reset_card_metrics(k)
+        )
+        menu.add_command(
+            label="Personalizar todas as métricas...",
+            command=lambda k=card_key: self.open_metrics_config(k)
+        )
+
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def open_metrics_config(self, highlight_card: str | None = None) -> None:
+        """Modal dialog to choose visible quota rings per assistant with live preview."""
+        if hasattr(self, "_config_dialog") and self._config_dialog and self._config_dialog.winfo_exists():
+            self._config_dialog.lift()
+            self._config_dialog.focus_force()
+            return
+
+        dialog = tk.Toplevel(self.root)
+        self._config_dialog = dialog
+        dialog.title("Personalizar Rodas de Cotas")
+        dialog.configure(bg=BG_MAIN)
+        dialog.attributes("-topmost", True)
+        dialog.resizable(False, False)
+
+        dlg_header = tk.Frame(dialog, bg=BG_MAIN, padx=16, pady=12)
+        dlg_header.pack(fill="x")
+        tk.Label(
+            dlg_header,
+            text="⚙ Personalizar Rodas Visíveis",
+            font=("Segoe UI", 11, "bold"),
+            fg=TEXT_MAIN,
+            bg=BG_MAIN,
+        ).pack(anchor="w")
+        tk.Label(
+            dlg_header,
+            text="Escolha quais indicadores exibir. O layout se adapta automaticamente.",
+            font=("Segoe UI", 8),
+            fg=TEXT_MUTED,
+            bg=BG_MAIN,
+        ).pack(anchor="w", pady=(2, 0))
+
+        content = tk.Frame(dialog, bg=BG_MAIN, padx=16, pady=4)
+        content.pack(fill="both", expand=True)
+
+        card_accents = {
+            "agy": COLOR_CYAN,
+            "claude1": COLOR_GREEN,
+            "claude2": COLOR_GREEN,
+            "codex": COLOR_PURPLE,
+        }
+
+        chk_vars: dict[tuple[str, str], tk.BooleanVar] = {}
+
+        def on_toggle(card_k: str, metric_k: str):
+            self.toggle_metric(card_k, metric_k)
+
+        for card_key, defs in PROVIDER_METRIC_DEFINITIONS.items():
+            title = PROVIDER_TITLES.get(card_key, card_key)
+            accent = card_accents.get(card_key, COLOR_CYAN)
+            is_highlighted = highlight_card == card_key
+
+            sec = tk.Frame(
+                content,
+                bg=BG_CARD,
+                padx=10,
+                pady=8,
+                highlightthickness=1,
+                highlightbackground=accent if is_highlighted else BORDER_COLOR,
+            )
+            sec.pack(fill="x", pady=4)
+
+            sec_hdr = tk.Frame(sec, bg=BG_CARD)
+            sec_hdr.pack(fill="x", pady=(0, 4))
+            tk.Label(sec_hdr, text="●", font=("Segoe UI", 8), fg=accent, bg=BG_CARD).pack(side="left", padx=(0, 4))
+            tk.Label(sec_hdr, text=title, font=("Segoe UI", 9, "bold"), fg=TEXT_MAIN, bg=BG_CARD).pack(side="left")
+
+            visible_keys = set(self.config.get("visible_metrics", {}).get(card_key, []))
+
+            opts_frame = tk.Frame(sec, bg=BG_CARD)
+            opts_frame.pack(fill="x")
+
+            for short_label, m_key, full_label in defs:
+                var = tk.BooleanVar(value=(m_key in visible_keys))
+                chk_vars[(card_key, m_key)] = var
+                chk = tk.Checkbutton(
+                    opts_frame,
+                    text=f"[{short_label}] {full_label}",
+                    variable=var,
+                    font=("Segoe UI", 8),
+                    fg=TEXT_MAIN,
+                    bg=BG_CARD,
+                    activebackground=BG_CARD,
+                    activeforeground=COLOR_CYAN,
+                    selectcolor=BG_BAR,
+                    anchor="w",
+                    command=lambda ck=card_key, mk=m_key: on_toggle(ck, mk),
+                )
+                chk.pack(anchor="w", pady=1)
+
+        footer = tk.Frame(dialog, bg=BG_MAIN, padx=16, pady=12)
+        footer.pack(fill="x")
+
+        def restore_defaults():
+            self.reset_all_metrics()
+            for (ck, mk), var in chk_vars.items():
+                var.set(mk in DEFAULT_VISIBLE_METRICS.get(ck, []))
+
+        btn_restore = tk.Button(
+            footer,
+            text="Restaurar Padrões",
+            font=("Segoe UI", 8),
+            fg=TEXT_MAIN,
+            bg=BG_BAR,
+            activebackground=BORDER_COLOR,
+            activeforeground=TEXT_MAIN,
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=restore_defaults,
+        )
+        btn_restore.pack(side="left")
+
+        btn_close = tk.Button(
+            footer,
+            text="Concluir",
+            font=("Segoe UI", 8, "bold"),
+            fg=BG_MAIN,
+            bg=COLOR_CYAN,
+            activebackground="#a6e3a1",
+            activeforeground=BG_MAIN,
+            relief="flat",
+            padx=14,
+            pady=4,
+            cursor="hand2",
+            command=dialog.destroy,
+        )
+        btn_close.pack(side="right")
+
+        dialog.update_idletasks()
+        dlg_w = dialog.winfo_reqwidth()
+        dlg_h = dialog.winfo_reqheight()
+        parent_x = self.root.winfo_x()
+        parent_y = self.root.winfo_y()
+        parent_w = self.root.winfo_width()
+        dlg_x = max(10, parent_x + (parent_w - dlg_w) // 2)
+        dlg_y = max(10, parent_y + 40)
+        dialog.geometry(f"{dlg_w}x{dlg_h}+{dlg_x}+{dlg_y}")
 
     def _metric_tooltip(self, snapshot, full_label: str, metric) -> str:
         pct = "N/D" if metric is None or metric.remaining_pct is None else f"{metric.remaining_pct}%"
@@ -481,7 +1024,8 @@ class QuotaHUDApp:
     def _update_card(self, key: str, snapshot, *, claude: bool = False) -> None:
         controls = self.controls[key]
         if snapshot.status == OK:
-            controls["sub_info"].config(text=snapshot.account or "Disponível", fg=TEXT_MUTED)
+            info_text = snapshot.account or snapshot.plan or "Disponível"
+            controls["sub_info"].config(text=info_text, fg=TEXT_MUTED)
         else:
             status = "Sem dados" if snapshot.status == "unavailable" else "Erro na leitura"
             controls["sub_info"].config(text=status, fg=TEXT_MUTED)
@@ -533,7 +1077,7 @@ class QuotaHUDApp:
                 self._update_card("claude2", c2, claude=True)
             if codex:
                 self._update_card("codex", codex)
-            statuses = [s.status for s in self.snapshots.values()]
+            statuses = [s.status for s in self.snapshots.values() if s]
             self.status_lbl.config(text="Atualizado" if any(s == OK for s in statuses) else "Sem dados")
         if self.mode == "avatar" and hasattr(self, "avatar"):
             self.avatar.draw(tuple(self._provider_color(snapshot, key) for key, snapshot in (("agy", agy), ("claude", c1), ("codex", codex))))
@@ -541,37 +1085,94 @@ class QuotaHUDApp:
     def _provider_color(self, snapshot, key: str) -> str:
         if not snapshot:
             return TEXT_MUTED
-        candidates = {
-            "agy": ("gemini_5h", "gemini_weekly"),
-            "claude": ("five_hour", "seven_day", "context"),
-            "codex": ("five_hour", "tokens_5h", "seven_day"),
-        }[key]
-        values = [snapshot.metrics.get(item).remaining_pct for item in candidates if snapshot.metrics.get(item) and snapshot.metrics.get(item).remaining_pct is not None]
+        card_key_map = {"agy": "agy", "claude": "claude1", "codex": "codex"}
+        card_key = card_key_map.get(key, key)
+        visible = self.config.get("visible_metrics", {}).get(card_key, [])
+        if not visible:
+            visible = DEFAULT_VISIBLE_METRICS.get(card_key, [])
+        values = [
+            snapshot.metrics.get(item).remaining_pct
+            for item in visible
+            if snapshot.metrics.get(item) and snapshot.metrics.get(item).remaining_pct is not None
+        ]
         return metric_color(min(values) if values else None)
 
     def collect_snapshots(self) -> dict:
         """Collect all providers once; both UI modes consume this same result."""
-        agy = load_agy_snapshot(AGY_STATUS_JSON)
+        results = {}
+        try:
+            results["agy"] = load_agy_snapshot(AGY_STATUS_JSON)
+        except Exception:
+            results["agy"] = ProviderSnapshot(provider="antigravity", status="unavailable")
+
         active_email = self.get_user_email()
         c1_path = r"C:\Users\MOBILTEC\.claude-1.json"
         c2_path = r"C:\Users\MOBILTEC\.claude-2.json"
-        c1 = load_claude_snapshot(c1_path if os.path.exists(c1_path) else CLAUDE_STATUS_JSON)
-        c2 = load_claude_snapshot(c2_path if os.path.exists(c2_path) else CLAUDE_STATUS_JSON)
-        if c1.account == active_email and active_email:
-            c1 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
-        if c2.account == active_email and active_email:
-            c2 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
-        codex = load_codex_snapshot(CODEX_HISTORY_DB, CODEX_STATE_DB)
-        return {"agy": agy, "claude1": c1, "claude2": c2, "codex": codex}
+        try:
+            c1 = load_claude_snapshot(c1_path if os.path.exists(c1_path) else CLAUDE_STATUS_JSON)
+            if c1.account == active_email and active_email:
+                c1 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+            results["claude1"] = c1
+        except Exception:
+            results["claude1"] = ProviderSnapshot(provider="claude", status="unavailable")
+
+        try:
+            c2 = load_claude_snapshot(c2_path if os.path.exists(c2_path) else CLAUDE_STATUS_JSON)
+            if c2.account == active_email and active_email:
+                c2 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+            results["claude2"] = c2
+        except Exception:
+            results["claude2"] = ProviderSnapshot(provider="claude", status="unavailable")
+
+        try:
+            results["codex"] = load_codex_snapshot(
+                CODEX_HISTORY_DB,
+                CODEX_STATE_DB,
+                rollouts_dir=CODEX_ROLLOUTS_DIR,
+            )
+        except Exception:
+            results["codex"] = ProviderSnapshot(provider="codex", status="unavailable")
+
+        return results
+
+    def _async_fetch_snapshots(self) -> None:
+        if self._fetching:
+            return
+        self._fetching = True
+        try:
+            snapshots = self.collect_snapshots()
+            self._last_fetch = time.time()
+            if self.root.winfo_exists():
+                self.root.after(0, lambda: self._apply_snapshots(snapshots))
+        finally:
+            self._fetching = False
+
+    def _apply_snapshots(self, snapshots: dict) -> None:
+        self.snapshots = snapshots
+        self._render_snapshots()
+        primary = self.snapshots.get("agy", {}).metrics.get("gemini_5h") if hasattr(self.snapshots.get("agy"), "metrics") else None
+        if primary and primary.remaining_pct is not None and primary.remaining_pct <= 15 and not notifications_state["agy_alerted"]:
+            send_windows_toast("Alerta Antigravity", f"Cota Gemini em {primary.remaining_pct}%!")
+            notifications_state["agy_alerted"] = True
+
+    def _update_countdowns(self) -> None:
+        if self.mode != "panel" or not hasattr(self, "controls") or not self.snapshots:
+            return
+        for card_key, control in self.controls.items():
+            snapshot = self.snapshots.get(card_key)
+            if not snapshot or not hasattr(snapshot, "metrics"):
+                continue
+            for metric_key, tile in control.get("tiles", {}).items():
+                metric = snapshot.metrics.get(metric_key)
+                if metric and metric.remaining_pct is not None and metric.reset_at:
+                    tile["reset"].config(text=visible_countdown(metric.reset_at))
 
     def update_data(self) -> None:
         try:
-            self.snapshots = self.collect_snapshots()
-            self._render_snapshots()
-            primary = self.snapshots["agy"].metrics.get("gemini_5h")
-            if primary and primary.remaining_pct is not None and primary.remaining_pct <= 15 and not notifications_state["agy_alerted"]:
-                send_windows_toast("Alerta Antigravity", f"Cota Gemini em {primary.remaining_pct}%!")
-                notifications_state["agy_alerted"] = True
+            self._update_countdowns()
+            now = time.time()
+            if (now - self._last_fetch >= 5.0 or not self.snapshots) and not self._fetching:
+                threading.Thread(target=self._async_fetch_snapshots, daemon=True).start()
         finally:
             if self.root.winfo_exists():
                 self.root.after(1000, self.update_data)
@@ -585,14 +1186,16 @@ class QuotaHUDApp:
             return ""
 
     def force_update(self, _event=None) -> None:
+        if hasattr(self, "status_lbl"):
+            self.status_lbl.config(text="Atualizando...")
         def trigger():
             try:
                 subprocess.run(["agy", "--print", "/usage"], capture_output=True, timeout=30,
                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             except Exception:
                 pass
+            self._async_fetch_snapshots()
         threading.Thread(target=trigger, daemon=True).start()
-        self.update_data()
 
     def switch_claude1(self, _event=None) -> None:
         self._switch_claude(r"C:\Users\MOBILTEC\.claude-1.json")
@@ -734,16 +1337,46 @@ def acquire_instance_mutex():
     return bool(handle), handle
 
 
+def signal_existing_instance() -> bool:
+    """Notify the running instance to show/lift its panel."""
+    if os.name != "nt":
+        return False
+    kernel32 = ctypes.windll.kernel32
+    EVENT_MODIFY_STATE = 0x0002
+    handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "Local\\CotasGuiShowEvent")
+    if handle:
+        kernel32.SetEvent(handle)
+        kernel32.CloseHandle(handle)
+        return True
+    return False
+
+
 def main() -> None:
     enable_windows_dpi_awareness()
     first, mutex = acquire_instance_mutex()
     if not first:
+        signal_existing_instance()
         return
+
+    event_handle = None
+    if os.name == "nt":
+        kernel32 = ctypes.windll.kernel32
+        event_handle = kernel32.CreateEventW(None, False, False, "Local\\CotasGuiShowEvent")
+
     root = tk.Tk()
     try:
-        QuotaHUDApp(root)
+        app = QuotaHUDApp(root)
+        if event_handle and os.name == "nt":
+            def _listener():
+                while True:
+                    res = kernel32.WaitForSingleObject(event_handle, 0xFFFFFFFF)
+                    if res == 0:
+                        root.after(0, lambda: (root.deiconify(), app.set_mode("panel", force=True), root.lift(), root.attributes("-topmost", True), root.focus_force()))
+            threading.Thread(target=_listener, daemon=True, name="activation-listener").start()
         root.mainloop()
     finally:
+        if event_handle and os.name == "nt":
+            ctypes.windll.kernel32.CloseHandle(event_handle)
         if mutex and os.name == "nt":
             ctypes.windll.kernel32.CloseHandle(mutex)
 

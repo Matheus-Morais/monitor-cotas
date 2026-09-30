@@ -278,12 +278,15 @@ def _query_codex_databases(
     return result
 
 
+_codex_rate_cache: dict[str, Any] = {"result": None, "timestamp": 0.0, "dir": None}
+
+
 def _read_codex_rate_limits(
     sessions_dir: str | os.PathLike[str] | None,
     *,
     now: float,
-    max_files: int = 24,
-    tail_bytes: int = 1_048_576,
+    max_files: int = 4,
+    tail_bytes: int = 131072,
 ) -> dict[str, Any] | None:
     """Read the latest server-reported Codex limits from recent rollouts.
 
@@ -293,6 +296,10 @@ def _read_codex_rate_limits(
     """
     if not sessions_dir or not os.path.isdir(sessions_dir):
         return None
+
+    str_dir = str(sessions_dir)
+    if _codex_rate_cache["dir"] == str_dir and (now - _codex_rate_cache["timestamp"]) < 10.0:
+        return _codex_rate_cache["result"]
 
     try:
         paths = sorted(
@@ -349,16 +356,24 @@ def _read_codex_rate_limits(
                     "observed_at": observed_at,
                     "source": str(path),
                 }
+    _codex_rate_cache["result"] = latest
+    _codex_rate_cache["timestamp"] = now
+    _codex_rate_cache["dir"] = str_dir
     return latest
 
 
-def _codex_rate_metric(quota: Any) -> Metric:
+def _codex_rate_metric(quota: Any, *, now: float | None = None) -> Metric:
     if not isinstance(quota, dict):
         return Metric()
     used = _percent(quota.get("used_percent"))
+    resets_at = quota.get("resets_at")
     remaining = None if used is None else 100 - used
-    detail = f"uso {used}%" if used is not None else ""
-    return Metric(remaining, quota.get("resets_at"), detail=detail)
+    if resets_at is not None and now is not None and isinstance(resets_at, (int, float)) and resets_at <= now:
+        remaining = 100
+        detail = "resetado"
+    else:
+        detail = f"uso {used}%" if used is not None else ""
+    return Metric(remaining, resets_at, detail=detail)
 
 
 def load_codex_snapshot(
@@ -379,8 +394,8 @@ def load_codex_snapshot(
     metrics: dict[str, Metric] = {}
     if rate_limit_data is not None:
         limits = rate_limit_data["limits"]
-        metrics["five_hour"] = _codex_rate_metric(limits.get("primary"))
-        metrics["seven_day"] = _codex_rate_metric(limits.get("secondary"))
+        metrics["five_hour"] = _codex_rate_metric(limits.get("primary"), now=now)
+        metrics["seven_day"] = _codex_rate_metric(limits.get("secondary"), now=now)
 
     if rate_limit_data is None and stats["turns_5h"] is not None:
         remaining = max(0, round((1 - stats["turns_5h"] / limit_5h) * 100))
@@ -417,8 +432,12 @@ def load_codex_snapshot(
         "observed_turns_5h": stats["turns_5h"],
         "observed_turns_7d": stats["turns_7d"],
     }
+    plan = ""
+    account = ""
     if rate_limit_data is not None:
         limits = rate_limit_data["limits"]
+        plan = str(limits.get("plan_type", "") or "").capitalize()
+        account = plan or "Plus"
         metadata.update(
             {
                 "rate_limit_source": rate_limit_data["source"],
@@ -433,6 +452,8 @@ def load_codex_snapshot(
         _snapshot_status(metrics, OK),
         metrics,
         model=model,
+        plan=plan,
+        account=account,
         source_age_seconds=(
             max(0, int(now - rate_limit_data["observed_at"]))
             if rate_limit_data is not None

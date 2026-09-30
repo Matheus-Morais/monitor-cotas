@@ -5,18 +5,20 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$running = Get-Process -Name MonitorCotas -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq (Join-Path $PSScriptRoot "dist\MonitorCotas\MonitorCotas.exe") }
+$distTarget = Join-Path $env:USERPROFILE "dist"
+$running = Get-Process -Name MonitorCotas -ErrorAction SilentlyContinue
 if ($running) {
-    throw "Feche o MonitorCotas.exe antes de executar o build para liberar os arquivos de dist."
+    Write-Host "Encerrando instâncias em execução do MonitorCotas..."
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
 }
 
 if ($InstallDependencies) {
     python -m pip install -r requirements.txt
 }
 
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name MonitorCotas quota_widget_compact.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name MonitorCotas --distpath $distTarget --add-data "ui;ui" quota_webview_app.py
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller falhou com código $LASTEXITCODE."
 }
-Write-Host "Build concluído em dist\\MonitorCotas"
+Write-Host "Build concluído em $distTarget\MonitorCotas.exe"

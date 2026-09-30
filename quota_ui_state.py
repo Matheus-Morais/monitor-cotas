@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
+    "agy": ["gemini_5h", "gemini_weekly", "3p_5h"],
+    "claude1": ["five_hour", "seven_day"],
+    "claude2": ["five_hour", "seven_day"],
+    "codex": ["five_hour", "seven_day"],
+}
+
 DEFAULT_UI_CONFIG: dict[str, Any] = {
     "ui_mode": "avatar",
     "avatar_size": 72,
@@ -17,6 +24,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
     "show_in_taskbar": False,
     "compact_mode": False,
     "collapsed_cards": {},
+    "visible_metrics": {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()},
 }
 
 
@@ -47,8 +55,8 @@ def _panel_geometry(raw: Any, fallback: dict[str, int | None]) -> dict[str, int 
     return {
         "x": _int_or(raw.get("x"), fallback["x"]),
         "y": _int_or(raw.get("y"), fallback["y"]),
-        "width": _int_or(raw.get("width"), fallback["width"], minimum=360),
-        "height": _int_or(raw.get("height"), fallback["height"], minimum=260),
+        "width": _int_or(raw.get("width"), fallback["width"], minimum=240),
+        "height": _int_or(raw.get("height"), fallback["height"], minimum=180),
     }
 
 
@@ -62,6 +70,7 @@ def default_ui_config() -> dict[str, Any]:
         "show_in_taskbar": DEFAULT_UI_CONFIG["show_in_taskbar"],
         "compact_mode": DEFAULT_UI_CONFIG["compact_mode"],
         "collapsed_cards": {},
+        "visible_metrics": {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()},
     }
 
 
@@ -84,10 +93,10 @@ def normalize_ui_config(raw: Any) -> dict[str, Any]:
     config["panel_geometry"] = _panel_geometry(panel_geometry, config["panel_geometry"])
     if "width" in raw or "height" in raw:
         config["panel_geometry"]["width"] = _int_or(
-            raw.get("width"), config["panel_geometry"]["width"], minimum=360
+            raw.get("width"), config["panel_geometry"]["width"], minimum=240
         )
         config["panel_geometry"]["height"] = _int_or(
-            raw.get("height"), config["panel_geometry"]["height"], minimum=260
+            raw.get("height"), config["panel_geometry"]["height"], minimum=180
         )
     config["show_in_taskbar"] = bool(
         raw.get("show_in_taskbar", raw.get("taskbar", config["show_in_taskbar"]))
@@ -96,6 +105,17 @@ def normalize_ui_config(raw: Any) -> dict[str, Any]:
     collapsed = raw.get("collapsed_cards", {})
     if isinstance(collapsed, dict):
         config["collapsed_cards"] = {key: bool(collapsed.get(key, False)) for key in ("agy", "claude1", "claude2", "codex")}
+    visible = raw.get("visible_metrics", {})
+    if isinstance(visible, dict):
+        config["visible_metrics"] = {}
+        for prov, default_keys in DEFAULT_VISIBLE_METRICS.items():
+            items = visible.get(prov)
+            if isinstance(items, list):
+                config["visible_metrics"][prov] = [str(x) for x in items]
+            else:
+                config["visible_metrics"][prov] = list(default_keys)
+    else:
+        config["visible_metrics"] = {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()}
     return config
 
 

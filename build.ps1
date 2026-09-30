@@ -15,7 +15,7 @@ if ($InstallDependencies) {
     python -m pip install -r requirements.txt
 }
 
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name MonitorCotas quota_widget.py
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name MonitorCotas quota_widget_compact.py
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller falhou com código $LASTEXITCODE."
 }

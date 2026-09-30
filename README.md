@@ -11,13 +11,17 @@ python quota_monitor.py --once
 .\cotas-gui.cmd
 ```
 
+A interface compacta atual está em `quota_widget_compact.py`; o launcher e o
+build do Windows usam esse arquivo. A implementação anterior permanece no
+projeto para referência e compatibilidade dos serviços existentes.
+
 O comando global `cotas-gui` aponta para este projeto.
 
 ## Testar
 
 ```powershell
-python -m unittest -v test_quota_core.py
-python -m py_compile quota_core.py quota_monitor.py quota_widget.py test_quota_core.py
+python -m unittest -v test_quota_core.py test_quota_widget_compact.py
+python -m py_compile quota_core.py quota_monitor.py quota_widget_compact.py quota_ui_state.py test_quota_core.py test_quota_widget_compact.py
 ```
 
 O monitor lê os arquivos de telemetria locais das ferramentas instaladas. Credenciais e bancos de dados locais não fazem parte deste repositório.

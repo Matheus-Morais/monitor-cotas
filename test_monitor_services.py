@@ -1,12 +1,13 @@
 import json
 import queue
+import subprocess
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from collector import CollectorWorker, DashboardSnapshot
+from collector import CollectorWorker, DashboardSnapshot, QuotaCollector
 from config import MonitorConfig, app_data_dir, load_config, save_config
 from history import HistoryStore
 from notifier import OptionalTray
@@ -90,6 +91,20 @@ class MonitorServicesTests(unittest.TestCase):
         second = results.get(timeout=2)
         worker.stop(timeout=1)
         self.assertGreater(second.collected_at, first.collected_at)
+
+    def test_agy_poll_uses_popen_pipes(self):
+        class CompletedProcess:
+            returncode = 0
+
+            def poll(self):
+                return 0
+
+        with patch("collector.subprocess.Popen", return_value=CompletedProcess()) as popen:
+            self.assertTrue(QuotaCollector(MonitorConfig.defaults()).poll_agy())
+        kwargs = popen.call_args.kwargs
+        self.assertIs(kwargs["stdout"], subprocess.PIPE)
+        self.assertIs(kwargs["stderr"], subprocess.PIPE)
+        self.assertNotIn("capture_output", kwargs)
 
     def test_history_records_and_reads_snapshots(self):
         store = HistoryStore(self.root / "history.sqlite")

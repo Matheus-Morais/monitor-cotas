@@ -53,7 +53,8 @@ class QuotaCollector:
         try:
             process = subprocess.Popen(
                 ["agy", "--print", "/usage"],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             deadline = time.monotonic() + 30
@@ -128,11 +129,18 @@ class CollectorWorker:
             self._thread.join(timeout=timeout)
 
     def _run(self) -> None:
-        last_agy_poll = 0.0
+        # Paint local sources immediately.  The optional agy subprocess can
+        # take several seconds on a cold start and must not blank the HUD.
+        last_agy_poll = time.monotonic()
         while not self._stop.is_set():
             now = time.monotonic()
             if now - last_agy_poll >= self.collector.config.agy_poll_seconds:
-                self.collector.poll_agy(self._stop)
+                try:
+                    self.collector.poll_agy(self._stop)
+                except Exception:
+                    # A slow or incompatible optional provider must not stop
+                    # snapshots from the other providers reaching the UI.
+                    pass
                 last_agy_poll = now
             try:
                 snapshot = self.collector.collect()

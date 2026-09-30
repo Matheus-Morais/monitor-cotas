@@ -32,13 +32,16 @@ from quota_ui_state import (
     save_ui_config,
 )
 
-AGY_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\agy-statusline-input.json"
-CLAUDE_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\claude-statusline-input.json"
-CODEX_CONFIG = r"C:\Users\MOBILTEC\.codex\config.toml"
-CODEX_STATE_DB = r"C:\Users\MOBILTEC\.codex\state_5.sqlite"
-CODEX_HISTORY_DB = r"C:\Users\MOBILTEC\.codex\thread_history_1.sqlite"
-CODEX_ROLLOUTS_DIR = r"C:\Users\MOBILTEC\.codex\sessions"
+HOME_DIR = Path.home()
+AGY_STATUS_JSON = os.environ.get("AGY_STATUS_JSON", str(HOME_DIR / "scripts" / "agy-statusline-input.json"))
+CLAUDE_STATUS_JSON = os.environ.get("CLAUDE_STATUS_JSON", str(HOME_DIR / "scripts" / "claude-statusline-input.json"))
+CODEX_CONFIG = os.environ.get("CODEX_CONFIG", str(HOME_DIR / ".codex" / "config.toml"))
+CODEX_STATE_DB = os.environ.get("CODEX_STATE_DB", str(HOME_DIR / ".codex" / "state_5.sqlite"))
+CODEX_HISTORY_DB = os.environ.get("CODEX_HISTORY_DB", str(HOME_DIR / ".codex" / "thread_history_1.sqlite"))
+CODEX_ROLLOUTS_DIR = os.environ.get("CODEX_ROLLOUTS_DIR", str(HOME_DIR / ".codex" / "sessions"))
+CLAUDE_JSON_PATH = HOME_DIR / ".claude.json"
 CONFIG_PATH = Path(sys.executable).with_name("config.json") if getattr(sys, "frozen", False) else Path(__file__).with_name("config.json")
+
 
 SUBCLASSPROC = ctypes.WINFUNCTYPE(ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, ctypes.c_void_p, ctypes.c_void_p) if os.name == "nt" else None
 
@@ -124,7 +127,7 @@ def clamp_to_work_area(x: int | None, y: int | None, width: int, height: int) ->
 
 def get_user_email() -> str:
     try:
-        with open(r"C:\Users\MOBILTEC\.claude.json", "r", encoding="utf-8") as handle:
+        with open(CLAUDE_JSON_PATH, "r", encoding="utf-8") as handle:
             data = json.load(handle)
         return data.get("oauthAccount", {}).get("emailAddress", "")
     except (OSError, ValueError, AttributeError):
@@ -162,23 +165,24 @@ def collect_snapshots() -> dict[str, Any]:
         results["agy"] = ProviderSnapshot(provider="antigravity", status="unavailable")
 
     active_email = get_user_email()
-    c1_path = r"C:\Users\MOBILTEC\.claude-1.json"
-    c2_path = r"C:\Users\MOBILTEC\.claude-2.json"
+    c1_path = HOME_DIR / ".claude-1.json"
+    c2_path = HOME_DIR / ".claude-2.json"
     try:
-        c1 = load_claude_snapshot(c1_path if os.path.exists(c1_path) else CLAUDE_STATUS_JSON)
+        c1 = load_claude_snapshot(str(c1_path) if c1_path.exists() else CLAUDE_STATUS_JSON)
         if c1.account == active_email and active_email:
-            c1 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+            c1 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
         results["claude1"] = c1
     except Exception:
         results["claude1"] = ProviderSnapshot(provider="claude", status="unavailable")
 
     try:
-        c2 = load_claude_snapshot(c2_path if os.path.exists(c2_path) else CLAUDE_STATUS_JSON)
+        c2 = load_claude_snapshot(str(c2_path) if c2_path.exists() else CLAUDE_STATUS_JSON)
         if c2.account == active_email and active_email:
-            c2 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+            c2 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
         results["claude2"] = c2
     except Exception:
         results["claude2"] = ProviderSnapshot(provider="claude", status="unavailable")
+
 
     try:
         results["codex"] = load_codex_snapshot(
@@ -227,14 +231,15 @@ class QuotaAPI:
         self._app.save_preferences()
 
     def switch_claude(self, account_num: int) -> bool:
-        source = rf"C:\Users\MOBILTEC\.claude-{account_num}.json"
-        dest = r"C:\Users\MOBILTEC\.claude.json"
+        source = HOME_DIR / f".claude-{account_num}.json"
+        dest = CLAUDE_JSON_PATH
         try:
-            shutil.copy(source, dest)
+            shutil.copy(str(source), str(dest))
             self._app.snapshots = collect_snapshots()
             return True
         except OSError:
             return False
+
 
     def force_refresh(self) -> dict[str, Any]:
         def trigger_agy():
@@ -575,7 +580,7 @@ class QuotaWebViewApp:
                 pystray.MenuItem("Minimizar Janela", lambda: self.minimize()),
                 pystray.MenuItem("Sair", self.close),
             )
-            self.tray_icon = pystray.Icon("cotas-gui", make_tray_icon(), "Monitor de Cotas", menu)
+            self.tray_icon = pystray.Icon("tokenwatch", make_tray_icon(), "TokenWatch", menu)
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
         except Exception:
             self.tray_icon = None
@@ -615,7 +620,7 @@ class QuotaWebViewApp:
             x, y = clamp_to_work_area(geometry.get("x"), geometry.get("y"), width, height)
 
         self.window = webview.create_window(
-            title="Monitor de Cotas",
+            title="TokenWatch",
             url=ui_path.as_uri(),
             js_api=self.api,
             width=width,
@@ -648,12 +653,12 @@ class QuotaWebViewApp:
             except Exception:
                 pass
             if self.mode == "avatar":
-                self.window.resize(size, size)
-                self._apply_circular_region(True, size)
+                avatar_size = int(self.config.get("avatar_size") or 72)
+                self.window.resize(avatar_size, avatar_size)
+                self._apply_circular_region(True, avatar_size)
 
         self.window.events.shown += _on_shown
         self.window.events.resized += lambda *args: self.save_preferences()
-
 
         webview.start(debug=False)
 
@@ -662,7 +667,7 @@ def acquire_instance_mutex():
     if os.name != "nt":
         return True, None
     kernel32 = ctypes.windll.kernel32
-    handle = kernel32.CreateMutexW(None, False, "Local\\CotasGuiSingleton")
+    handle = kernel32.CreateMutexW(None, False, "Local\\TokenWatchSingleton")
     already_exists = kernel32.GetLastError() == 183
     if already_exists and handle:
         kernel32.CloseHandle(handle)
@@ -675,7 +680,7 @@ def signal_existing_instance() -> bool:
         return False
     kernel32 = ctypes.windll.kernel32
     EVENT_MODIFY_STATE = 0x0002
-    handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "Local\\CotasGuiShowEvent")
+    handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "Local\\TokenWatchShowEvent")
     if handle:
         kernel32.SetEvent(handle)
         kernel32.CloseHandle(handle)
@@ -692,7 +697,8 @@ def main() -> None:
     event_handle = None
     if os.name == "nt":
         kernel32 = ctypes.windll.kernel32
-        event_handle = kernel32.CreateEventW(None, False, False, "Local\\CotasGuiShowEvent")
+        event_handle = kernel32.CreateEventW(None, False, False, "Local\\TokenWatchShowEvent")
+
 
     app = QuotaWebViewApp()
 

@@ -82,13 +82,16 @@ PROVIDER_TITLES: dict[str, str] = {
     "claude2": "Claude Code 2",
     "codex": "Codex",
 }
-AGY_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\agy-statusline-input.json"
-CLAUDE_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\claude-statusline-input.json"
-CODEX_CONFIG = r"C:\Users\MOBILTEC\.codex\config.toml"
-CODEX_STATE_DB = r"C:\Users\MOBILTEC\.codex\state_5.sqlite"
-CODEX_HISTORY_DB = r"C:\Users\MOBILTEC\.codex\thread_history_1.sqlite"
-CODEX_ROLLOUTS_DIR = r"C:\Users\MOBILTEC\.codex\sessions"
+HOME_DIR = Path.home()
+AGY_STATUS_JSON = os.environ.get("AGY_STATUS_JSON", str(HOME_DIR / "scripts" / "agy-statusline-input.json"))
+CLAUDE_STATUS_JSON = os.environ.get("CLAUDE_STATUS_JSON", str(HOME_DIR / "scripts" / "claude-statusline-input.json"))
+CODEX_CONFIG = os.environ.get("CODEX_CONFIG", str(HOME_DIR / ".codex" / "config.toml"))
+CODEX_STATE_DB = os.environ.get("CODEX_STATE_DB", str(HOME_DIR / ".codex" / "state_5.sqlite"))
+CODEX_HISTORY_DB = os.environ.get("CODEX_HISTORY_DB", str(HOME_DIR / ".codex" / "thread_history_1.sqlite"))
+CODEX_ROLLOUTS_DIR = os.environ.get("CODEX_ROLLOUTS_DIR", str(HOME_DIR / ".codex" / "sessions"))
+CLAUDE_JSON_PATH = HOME_DIR / ".claude.json"
 CONFIG_PATH = Path(sys.executable).with_name("config.json") if getattr(sys, "frozen", False) else Path(__file__).with_name("config.json")
+
 
 # Catppuccin Mocha palette, shared by the avatar, panel and tray icon.
 BG_MAIN = "#11111b"
@@ -1106,20 +1109,20 @@ class QuotaHUDApp:
             results["agy"] = ProviderSnapshot(provider="antigravity", status="unavailable")
 
         active_email = self.get_user_email()
-        c1_path = r"C:\Users\MOBILTEC\.claude-1.json"
-        c2_path = r"C:\Users\MOBILTEC\.claude-2.json"
+        c1_path = HOME_DIR / ".claude-1.json"
+        c2_path = HOME_DIR / ".claude-2.json"
         try:
-            c1 = load_claude_snapshot(c1_path if os.path.exists(c1_path) else CLAUDE_STATUS_JSON)
+            c1 = load_claude_snapshot(str(c1_path) if c1_path.exists() else CLAUDE_STATUS_JSON)
             if c1.account == active_email and active_email:
-                c1 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+                c1 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
             results["claude1"] = c1
         except Exception:
             results["claude1"] = ProviderSnapshot(provider="claude", status="unavailable")
 
         try:
-            c2 = load_claude_snapshot(c2_path if os.path.exists(c2_path) else CLAUDE_STATUS_JSON)
+            c2 = load_claude_snapshot(str(c2_path) if c2_path.exists() else CLAUDE_STATUS_JSON)
             if c2.account == active_email and active_email:
-                c2 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
+                c2 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
             results["claude2"] = c2
         except Exception:
             results["claude2"] = ProviderSnapshot(provider="claude", status="unavailable")
@@ -1177,9 +1180,9 @@ class QuotaHUDApp:
             if self.root.winfo_exists():
                 self.root.after(1000, self.update_data)
 
-    def get_user_email(self) -> str:
+    def get_user_email() -> str:
         try:
-            with open(r"C:\Users\MOBILTEC\.claude.json", "r", encoding="utf-8") as handle:
+            with open(CLAUDE_JSON_PATH, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
             return data.get("oauthAccount", {}).get("emailAddress", "")
         except (OSError, ValueError, AttributeError):
@@ -1198,18 +1201,19 @@ class QuotaHUDApp:
         threading.Thread(target=trigger, daemon=True).start()
 
     def switch_claude1(self, _event=None) -> None:
-        self._switch_claude(r"C:\Users\MOBILTEC\.claude-1.json")
+        self._switch_claude(str(HOME_DIR / ".claude-1.json"))
 
     def switch_claude2(self, _event=None) -> None:
-        self._switch_claude(r"C:\Users\MOBILTEC\.claude-2.json")
+        self._switch_claude(str(HOME_DIR / ".claude-2.json"))
 
     def _switch_claude(self, source: str) -> None:
         import shutil
         try:
-            shutil.copy(source, r"C:\Users\MOBILTEC\.claude.json")
+            shutil.copy(source, str(CLAUDE_JSON_PATH))
         except OSError:
             pass
         self.update_data()
+
 
     def toggle_pin(self, _event=None) -> None:
         self.is_topmost = not self.is_topmost

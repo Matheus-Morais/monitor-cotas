@@ -1,15 +1,32 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# SQLite databases & temp storage
 *.sqlite
 *.sqlite-*
+*.db
+
+# Virtual environments
 .venv/
 venv/
 env/
 .env
+
+# Editor & IDE configs
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# Build & packaging artifacts
 dist/
 build/
 *.spec
+
+# User local configs & telemetry tokens (never commit credentials!)
 config.local.json
 config.json
+.claude*.json
+*.log

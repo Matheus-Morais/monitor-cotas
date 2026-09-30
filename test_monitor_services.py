@@ -174,15 +174,15 @@ class MonitorServicesTests(unittest.TestCase):
 
     def test_gui_supports_minimize_and_resize(self):
         source = Path("quota_widget.py").read_text(encoding="utf-8")
-        self.assertIn("self.root.overrideredirect(False)", source)
-        self.assertIn("self.root.resizable(True, True)", source)
+        self.assertIn("self.root.overrideredirect(True)", source)
+        self.assertIn("self.root.resizable(False, False)", source)
         self.assertIn("self.root.minsize(360, 300)", source)
         self.assertIn("self.root.iconify()", source)
+        self.assertIn("def do_resize(self, event):", source)
 
     def test_gui_configures_dark_native_chrome_and_icon(self):
         source = Path("quota_widget.py").read_text(encoding="utf-8")
         self.assertIn("root.iconphoto(True, root._window_icon)", source)
-        self.assertIn("DwmSetWindowAttribute", source)
         self.assertIn("WINDOW_ICON_PNG", source)
 
     def test_distribution_files_exist(self):

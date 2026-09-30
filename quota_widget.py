@@ -67,30 +67,9 @@ def acquire_single_instance() -> bool:
 
 
 def configure_native_window(root):
-    """Apply the dark Windows title bar and the same lightning icon as the HUD."""
+    """Set the same lightning icon used by the HUD."""
     root._window_icon = tk.PhotoImage(data=WINDOW_ICON_PNG)
     root.iconphoto(True, root._window_icon)
-    if sys.platform != "win32":
-        return
-
-    try:
-        root.update_idletasks()
-        dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
-        set_attribute = dwmapi.DwmSetWindowAttribute
-        set_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
-        set_attribute.restype = ctypes.c_long
-
-        dark_mode = ctypes.c_int(1)
-        set_attribute(root.winfo_id(), 20, ctypes.byref(dark_mode), ctypes.sizeof(dark_mode))
-
-        # COLORREF values are encoded as 0x00BBGGRR.
-        caption_color = ctypes.c_int(0x001B1111)
-        text_color = ctypes.c_int(0x00F4D6CD)
-        set_attribute(root.winfo_id(), 35, ctypes.byref(caption_color), ctypes.sizeof(caption_color))
-        set_attribute(root.winfo_id(), 36, ctypes.byref(text_color), ctypes.sizeof(text_color))
-    except (AttributeError, OSError):
-        # Older Windows builds can lack one of the optional DWM attributes.
-        pass
 
 class ProgressBarWidget(tk.Canvas):
     def __init__(self, parent, width=280, height=8, **kwargs):
@@ -126,9 +105,10 @@ class QuotaHUDApp:
         self.root.title("Monitor de Cotas")
         self.root.geometry(self._initial_geometry())
         self.root.configure(bg=BG_MAIN)
-        # Keep the native Windows frame so minimize and edge resizing work.
-        self.root.overrideredirect(False)
-        self.root.resizable(True, True)
+        # Use the dark custom frame; native Windows caption colors are not
+        # consistent for Tk windows. Resizing is provided by the grip below.
+        self.root.overrideredirect(True)
+        self.root.resizable(False, False)
         self.root.minsize(360, 300)
         self.root.attributes("-topmost", self.config.topmost)
         self.root.attributes("-alpha", self.config.opacity)
@@ -143,8 +123,10 @@ class QuotaHUDApp:
 
         # Drag & Drop da janela
         self._drag_data = {"x": 0, "y": 0}
+        self._resize_data = {}
         self.setup_header()
         self.setup_sections()
+        self.setup_resize_grip()
 
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.worker.start()
@@ -265,6 +247,38 @@ class QuotaHUDApp:
         x = self.root.winfo_x() + deltax
         y = self.root.winfo_y() + deltay
         self.root.geometry(f"+{x}+{y}")
+
+    def setup_resize_grip(self):
+        self.resize_grip = tk.Label(
+            self.main_frame,
+            text="◢",
+            font=("Segoe UI", 12),
+            fg=TEXT_MUTED,
+            bg=BG_MAIN,
+            cursor="size_nw_se",
+        )
+        self.resize_grip.place(relx=1.0, rely=1.0, anchor="se", x=-1, y=-1)
+        self.resize_grip.bind("<ButtonPress-1>", self.start_resize)
+        self.resize_grip.bind("<B1-Motion>", self.do_resize)
+        self.resize_grip.bind("<ButtonRelease-1>", self.stop_resize)
+
+    def start_resize(self, event):
+        self._resize_data = {
+            "x": event.x_root,
+            "y": event.y_root,
+            "width": self.root.winfo_width(),
+            "height": self.root.winfo_height(),
+        }
+
+    def do_resize(self, event):
+        if not self._resize_data:
+            return
+        width = max(360, self._resize_data["width"] + event.x_root - self._resize_data["x"])
+        height = max(300, self._resize_data["height"] + event.y_root - self._resize_data["y"])
+        self.root.geometry(f"{width}x{height}")
+
+    def stop_resize(self, event):
+        self._resize_data = {}
 
     def toggle_pin(self, event):
         self.is_topmost = not self.is_topmost

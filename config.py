@@ -41,6 +41,7 @@ class MonitorConfig:
     codex_config: Path
     codex_state_db: Path
     codex_history_db: Path
+    codex_rollouts_dir: Path
     history_db: Path
     refresh_seconds: float = 5.0
     agy_poll_seconds: float = 120.0
@@ -71,6 +72,7 @@ class MonitorConfig:
             codex_config=codex / "config.toml",
             codex_state_db=codex / "state_5.sqlite",
             codex_history_db=codex / "thread_history_1.sqlite",
+            codex_rollouts_dir=codex / "sessions",
             history_db=app_data_dir() / "history.sqlite",
         )
 
@@ -102,7 +104,13 @@ def _from_dict(values: dict[str, Any]) -> MonitorConfig:
     for key, value in values.items():
         if key not in known:
             continue
-        if key.endswith("_json") or key.endswith("_db") or key == "codex_config" or key == "history_db":
+        if (
+            key.endswith("_json")
+            or key.endswith("_db")
+            or key.endswith("_dir")
+            or key == "codex_config"
+            or key == "history_db"
+        ):
             value = Path(value)
         setattr(defaults, key, value)
     return defaults.normalized()

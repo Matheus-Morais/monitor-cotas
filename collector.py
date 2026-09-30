@@ -96,6 +96,7 @@ class QuotaCollector:
                 model=read_codex_model(self.config.codex_config),
                 limit_5h=self.config.codex_limit_5h,
                 tokens_scale=self.config.codex_tokens_scale,
+                rollouts_dir=self.config.codex_rollouts_dir,
             ),
         )
 

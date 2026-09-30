@@ -278,8 +278,8 @@ class QuotaHUDApp:
         # Section 3: Codex
         self.codex_frame, self.codex_bars = self.create_card("Codex (ChatGPT Plus)", COLOR_PURPLE, [
             ("Janela 5 Horas", "codex_5h"),
-            ("Tokens 5h", "codex_tok"),
-            ("Atividade 7 Dias", "codex_7d")
+            ("Tokens observados 5h", "codex_tok"),
+            ("Cota semanal", "codex_7d")
         ])
 
     def create_card(self, title, accent_color, items, action_text=None, action_cmd=None):
@@ -338,7 +338,7 @@ class QuotaHUDApp:
         if remaining is None:
             controls["bar"].set_value(0, BG_BAR)
             controls["val"].config(text="N/D", fg=TEXT_MUTED)
-            controls["cd"].config(text="Sem dados", fg=TEXT_MUTED)
+            controls["cd"].config(text=metric.detail if metric and metric.detail else "Sem dados", fg=TEXT_MUTED)
             return
         color = self._metric_color(remaining)
         controls["bar"].set_value(remaining, color)
@@ -398,6 +398,8 @@ class QuotaHUDApp:
             self._set_metric(self.agy_bars, key, agy.metrics.get(core_key))
         self._update_claude_bars(self.claude_bars, snapshot.claude_profile_1)
         self._update_claude_bars(self.claude2_bars, snapshot.claude_profile_2)
+        source = "Cota real via rollout" if snapshot.codex.metadata.get("rate_limit_source") else "Estimativa local"
+        self.codex_bars["sub_info"].config(text=source)
         self._set_metric(self.codex_bars, "codex_5h", snapshot.codex.metrics.get("five_hour"))
         self._set_metric(self.codex_bars, "codex_tok", snapshot.codex.metrics.get("tokens_5h"))
         self._set_metric(self.codex_bars, "codex_7d", snapshot.codex.metrics.get("seven_day"))

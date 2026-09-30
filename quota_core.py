@@ -259,6 +259,89 @@ def _query_codex_databases(
     return result
 
 
+def _read_codex_rate_limits(
+    sessions_dir: str | os.PathLike[str] | None,
+    *,
+    now: float,
+    max_files: int = 24,
+    tail_bytes: int = 1_048_576,
+) -> dict[str, Any] | None:
+    """Read the latest server-reported Codex limits from recent rollouts.
+
+    Codex persists rate-limit events in rollout JSONL files.  This reader only
+    opens those files read-only and inspects a bounded tail of recent files so
+    the dashboard does not rescan the whole session history every refresh.
+    """
+    if not sessions_dir or not os.path.isdir(sessions_dir):
+        return None
+
+    try:
+        paths = sorted(
+            Path(sessions_dir).rglob("rollout-*.jsonl"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:max_files]
+    except OSError:
+        return None
+
+    latest: dict[str, Any] | None = None
+    for path in paths:
+        try:
+            with path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                handle.seek(max(0, size - tail_bytes), os.SEEK_SET)
+                raw = handle.read()
+        except OSError:
+            continue
+
+        for raw_line in raw.splitlines():
+            try:
+                event = json.loads(raw_line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            payload = event.get("payload") if isinstance(event, dict) else None
+            limits = payload.get("rate_limits") if isinstance(payload, dict) else None
+            primary = limits.get("primary") if isinstance(limits, dict) else None
+            secondary = limits.get("secondary") if isinstance(limits, dict) else None
+            if not isinstance(limits, dict) or not isinstance(primary, dict):
+                continue
+            if limits.get("limit_id") != "codex" or _percent(primary.get("used_percent")) is None:
+                continue
+
+            timestamp = event.get("timestamp")
+            observed_at = None
+            if isinstance(timestamp, str):
+                try:
+                    observed_at = _datetime.datetime.fromisoformat(
+                        timestamp.replace("Z", "+00:00")
+                    ).timestamp()
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            if observed_at is None:
+                try:
+                    observed_at = path.stat().st_mtime
+                except OSError:
+                    observed_at = now
+
+            if latest is None or observed_at > latest["observed_at"]:
+                latest = {
+                    "limits": limits,
+                    "observed_at": observed_at,
+                    "source": str(path),
+                }
+    return latest
+
+
+def _codex_rate_metric(quota: Any) -> Metric:
+    if not isinstance(quota, dict):
+        return Metric()
+    used = _percent(quota.get("used_percent"))
+    remaining = None if used is None else 100 - used
+    detail = f"uso {used}%" if used is not None else ""
+    return Metric(remaining, quota.get("resets_at"), detail=detail)
+
+
 def load_codex_snapshot(
     history_db: str | os.PathLike[str],
     state_db: str | os.PathLike[str],
@@ -266,14 +349,21 @@ def load_codex_snapshot(
     limit_5h: int = 50,
     tokens_scale: float = 2.0,
     now: float | None = None,
+    rollouts_dir: str | os.PathLike[str] | None = None,
 ) -> ProviderSnapshot:
     now = time.time() if now is None else now
     stats = _query_codex_databases(history_db, state_db, now)
-    if not stats["available"]:
+    rate_limit_data = _read_codex_rate_limits(rollouts_dir, now=now)
+    if not stats["available"] and rate_limit_data is None:
         return ProviderSnapshot("codex", UNAVAILABLE, model=model)
 
     metrics: dict[str, Metric] = {}
-    if stats["turns_5h"] is not None:
+    if rate_limit_data is not None:
+        limits = rate_limit_data["limits"]
+        metrics["five_hour"] = _codex_rate_metric(limits.get("primary"))
+        metrics["seven_day"] = _codex_rate_metric(limits.get("secondary"))
+
+    if rate_limit_data is None and stats["turns_5h"] is not None:
         remaining = max(0, round((1 - stats["turns_5h"] / limit_5h) * 100))
         reset = stats["first_turn_5h"] + 5 * 3600 if stats["first_turn_5h"] else None
         metrics["five_hour"] = Metric(
@@ -281,11 +371,11 @@ def load_codex_snapshot(
         )
     if stats["tokens_5h"] is not None:
         metrics["tokens_5h"] = Metric(
-            min(100, int((stats["tokens_5h"] / 1_000_000) * max(0.1, tokens_scale))),
-            detail=f"{round(stats['tokens_5h'] / 1_000_000, 1)}M tokens",
+            None,
+            detail=f"{round(stats['tokens_5h'] / 1_000_000, 1)}M tokens observados",
             estimated=True,
         )
-    if stats["turns_7d"] is not None:
+    if rate_limit_data is None and stats["turns_7d"] is not None:
         metrics["seven_day"] = Metric(
             min(100, stats["turns_7d"] * 2),
             detail=f"{stats['turns_7d']} turnos",
@@ -302,11 +392,33 @@ def load_codex_snapshot(
         else:
             last_active = f"ha {elapsed // 3600}h"
 
+    metadata = {
+        "last_active": last_active,
+        "limit_5h": limit_5h,
+        "observed_turns_5h": stats["turns_5h"],
+        "observed_turns_7d": stats["turns_7d"],
+    }
+    if rate_limit_data is not None:
+        limits = rate_limit_data["limits"]
+        metadata.update(
+            {
+                "rate_limit_source": rate_limit_data["source"],
+                "rate_limits_observed_at": rate_limit_data["observed_at"],
+                "plan_type": limits.get("plan_type", ""),
+                "credits": limits.get("credits", {}),
+            }
+        )
+
     return ProviderSnapshot(
         "codex",
         _snapshot_status(metrics, OK),
         metrics,
         model=model,
-        estimated=True,
-        metadata={"last_active": last_active, "limit_5h": limit_5h},
+        source_age_seconds=(
+            max(0, int(now - rate_limit_data["observed_at"]))
+            if rate_limit_data is not None
+            else None
+        ),
+        estimated=rate_limit_data is None,
+        metadata=metadata,
     )

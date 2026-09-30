@@ -22,6 +22,12 @@ python -m py_compile quota_core.py quota_monitor.py quota_widget.py test_quota_c
 
 O monitor lê os arquivos de telemetria locais das ferramentas instaladas. Credenciais e bancos de dados locais não fazem parte deste repositório.
 
+Para o Codex, a janela de 5 horas e a semanal usam o último `rate_limits` reportado
+nos rollouts locais (`%USERPROFILE%\\.codex\\sessions`). O consumo de tokens aparece
+separado como atividade observada; ele não é convertido artificialmente em quota.
+Se ainda não houver rollout com esse evento, o monitor usa o fallback marcado como
+estimativa.
+
 ## Configuração e histórico
 
 Na primeira execução, os defaults apontam para o perfil atual do Windows. As preferências são salvas em:

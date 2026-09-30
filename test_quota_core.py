@@ -120,6 +120,37 @@ class QuotaCoreTests(unittest.TestCase):
         self.assertTrue(snapshot.metrics["five_hour"].estimated)
         self.assertEqual(snapshot.metrics["five_hour"].detail, "1/50 turnos")
 
+    def test_codex_snapshot_uses_server_rate_limits_from_rollout(self):
+        sessions = self.root / "sessions" / "2026" / "09" / "30"
+        sessions.mkdir(parents=True)
+        rollout = sessions / "rollout-test.jsonl"
+        rollout.write_text(json.dumps({
+            "timestamp": "2026-09-30T12:00:00Z",
+            "payload": {
+                "rate_limits": {
+                    "limit_id": "codex",
+                    "plan_type": "plus",
+                    "primary": {"used_percent": 7, "window_minutes": 300, "resets_at": 20000},
+                    "secondary": {"used_percent": 20, "window_minutes": 10080, "resets_at": 30000},
+                    "credits": {"has_credits": False, "balance": "0"},
+                }
+            }
+        }) + "\n", encoding="utf-8")
+
+        snapshot = quota_core.load_codex_snapshot(
+            self.root / "missing-history.db",
+            self.root / "missing-state.db",
+            now=10000,
+            rollouts_dir=self.root / "sessions",
+        )
+
+        self.assertEqual(snapshot.status, quota_core.OK)
+        self.assertFalse(snapshot.estimated)
+        self.assertEqual(snapshot.metrics["five_hour"].remaining_pct, 93)
+        self.assertEqual(snapshot.metrics["seven_day"].remaining_pct, 80)
+        self.assertEqual(snapshot.metrics["five_hour"].reset_at, 20000)
+        self.assertTrue(snapshot.metadata["rate_limit_source"].endswith("rollout-test.jsonl"))
+
     def test_presentations_use_shared_core(self):
         import quota_monitor
         import quota_widget

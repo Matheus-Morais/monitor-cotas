@@ -46,7 +46,7 @@ def source_age(snapshot):
 
 def metric_info(metric):
     if metric is None or metric.remaining_pct is None:
-        return "N/D"
+        return f"N/D | {metric.detail}" if metric and metric.detail else "N/D"
     countdown = format_countdown(metric.reset_at) if metric.reset_at else ""
     if countdown and metric.detail:
         return f"{countdown} | {metric.detail}"
@@ -127,17 +127,19 @@ def get_codex_panel(snapshot):
         TextColumn("{task.fields[info]}")
     )
     five_hour = snapshot.metrics.get("five_hour")
-    add_metric_task(prog, "Janela 5h (estimativa)", five_hour)
-    add_metric_task(prog, "Consumo Tokens (estimativa)", snapshot.metrics.get("tokens_5h"))
-    add_metric_task(prog, "Atividade 7 Dias (estimativa)", snapshot.metrics.get("seven_day"))
+    has_real_limits = bool(snapshot.metadata.get("rate_limit_source"))
+    add_metric_task(prog, "Janela 5h (cota real)" if has_real_limits else "Janela 5h (estimativa)", five_hour)
+    add_metric_task(prog, "Tokens observados 5h", snapshot.metrics.get("tokens_5h"))
+    add_metric_task(prog, "Cota semanal (real)" if has_real_limits else "Atividade 7 Dias (estimativa)", snapshot.metrics.get("seven_day"))
 
     turns_rem_pct = five_hour.remaining_pct if five_hour and five_hour.remaining_pct is not None else "N/D"
     activity = snapshot.metadata.get("last_active", "")
     activity_label = f" (Atividade: {activity})" if activity else ""
     status_label = " • [yellow]Sem dados[/yellow]" if snapshot.status != OK else ""
+    source = "Cota real via rollout" if has_real_limits else "Estimativa local"
     return Panel(
         prog,
-        title=f"[bold magenta]Codex CLI[/bold magenta] [dim]• ChatGPT Plus | Modelo: {snapshot.model}{activity_label}[/dim]{status_label}",
+        title=f"[bold magenta]Codex CLI[/bold magenta] [dim]• {source} | Modelo: {snapshot.model}{activity_label}[/dim]{status_label}",
         border_style="magenta",
         expand=True
     ), turns_rem_pct

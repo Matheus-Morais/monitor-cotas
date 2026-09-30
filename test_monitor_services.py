@@ -177,7 +177,7 @@ class MonitorServicesTests(unittest.TestCase):
         self.assertIn("self.root.overrideredirect(True)", source)
         self.assertIn("self.root.resizable(False, False)", source)
         self.assertIn("self.root.minsize(360, 300)", source)
-        self.assertIn("self.root.withdraw()", source)
+        self.assertIn("ShowWindow(self.root.winfo_id(), 6)", source)
         self.assertIn("def minimize_window(self, event=None):", source)
         self.assertIn("def do_resize(self, event):", source)
 
@@ -185,6 +185,8 @@ class MonitorServicesTests(unittest.TestCase):
         source = Path("quota_widget.py").read_text(encoding="utf-8")
         self.assertIn("root.iconphoto(True, root._window_icon)", source)
         self.assertIn("WINDOW_ICON_PNG", source)
+        self.assertIn("WS_EX_APPWINDOW", source)
+        self.assertIn("configure_taskbar_presence", source)
 
     def test_distribution_files_exist(self):
         for name in ("README.md", "requirements.txt", "build.ps1", "cotas-gui.cmd"):

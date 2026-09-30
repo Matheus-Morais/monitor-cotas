@@ -71,6 +71,29 @@ def configure_native_window(root):
     root._window_icon = tk.PhotoImage(data=WINDOW_ICON_PNG)
     root.iconphoto(True, root._window_icon)
 
+
+def configure_taskbar_presence(root):
+    """Keep the borderless HUD represented by a normal taskbar button."""
+    if sys.platform != "win32":
+        return
+    try:
+        root.update_idletasks()
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        get_style = user32.GetWindowLongPtrW
+        set_style = user32.SetWindowLongPtrW
+        get_style.argtypes = [wintypes.HWND, ctypes.c_int]
+        get_style.restype = ctypes.c_void_p
+        set_style.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+        set_style.restype = ctypes.c_void_p
+
+        hwnd = root.winfo_id()
+        exstyle = int(get_style(hwnd, -20) or 0)  # GWL_EXSTYLE
+        exstyle = (exstyle | 0x00040000) & ~0x00000080  # WS_EX_APPWINDOW, not TOOLWINDOW
+        set_style(hwnd, -20, exstyle)
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0037)
+    except (AttributeError, OSError):
+        pass
+
 class ProgressBarWidget(tk.Canvas):
     def __init__(self, parent, width=280, height=8, **kwargs):
         super().__init__(parent, width=width, height=height, bg=BG_CARD, highlightthickness=0, **kwargs)
@@ -127,6 +150,7 @@ class QuotaHUDApp:
         self.setup_header()
         self.setup_sections()
         self.setup_resize_grip()
+        configure_taskbar_presence(self.root)
 
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.worker.start()
@@ -150,6 +174,8 @@ class QuotaHUDApp:
 
     def show_window(self):
         self.root.deiconify()
+        if sys.platform == "win32":
+            ctypes.windll.user32.ShowWindow(self.root.winfo_id(), 9)  # SW_RESTORE
         self.root.lift()
 
     def close(self):
@@ -172,14 +198,17 @@ class QuotaHUDApp:
         self.root.destroy()
 
     def toggle_visibility(self):
-        if self.root.winfo_viewable():
-            self.root.withdraw()
+        if self.root.state() == "iconic" or not self.root.winfo_viewable():
+            self.show_window()
         else:
-            self.root.deiconify()
+            self.minimize_window()
 
     def minimize_window(self, event=None):
-        """Hide the borderless HUD; restore it from tray or the global hotkey."""
-        self.root.withdraw()
+        """Minimize the borderless HUD to the Windows taskbar."""
+        if sys.platform == "win32":
+            ctypes.windll.user32.ShowWindow(self.root.winfo_id(), 6)  # SW_MINIMIZE
+        else:
+            self.root.iconify()
 
     def get_user_email(self):
         return self.last_snapshot.claude.account if self.last_snapshot else ""

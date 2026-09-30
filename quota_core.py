@@ -168,6 +168,20 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
     if data is None:
         return ProviderSnapshot("claude", source_status, source_age_seconds=age)
 
+    model = data.get("model", {})
+    model_name = model.get("display_name", "") if isinstance(model, dict) else ""
+    account = data.get("oauthAccount", {})
+    account_is_dict = isinstance(account, dict)
+    email = account.get("emailAddress", "") if account_is_dict else ""
+    account_uuid = account.get("accountUuid", "") if account_is_dict else ""
+    organization_uuid = account.get("organizationUuid", "") if account_is_dict else ""
+    metadata = {
+        "has_oauth_account": account_is_dict and bool(account),
+        "account_uuid": str(account_uuid or ""),
+        "organization_uuid": str(organization_uuid or ""),
+        "telemetry_available": False,
+    }
+
     cached = data.get("cachedUsageUtilization", {})
     utilization = cached.get("utilization") if isinstance(cached, dict) else None
     rate_limits = data.get("rate_limits")
@@ -190,12 +204,17 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
         context_pct = context.get("remaining_percentage") if isinstance(context, dict) else None
         metrics["context"] = Metric(_percent(context_pct))
     else:
-        return ProviderSnapshot("claude", ERROR, source_age_seconds=age, error="limites ausentes")
+        return ProviderSnapshot(
+            "claude",
+            UNAVAILABLE,
+            model=str(model_name or ""),
+            account=str(email or ""),
+            source_age_seconds=age,
+            metadata=metadata,
+            error="limites ausentes",
+        )
 
-    model = data.get("model", {})
-    model_name = model.get("display_name", "") if isinstance(model, dict) else ""
-    account = data.get("oauthAccount", {})
-    email = account.get("emailAddress", "") if isinstance(account, dict) else ""
+    metadata["telemetry_available"] = True
     return ProviderSnapshot(
         "claude",
         _snapshot_status(metrics, source_status),
@@ -203,7 +222,7 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
         model=str(model_name or ""),
         account=str(email or ""),
         source_age_seconds=age,
-        metadata={"has_oauth_account": isinstance(account, dict) and bool(account)},
+        metadata=metadata,
     )
 
 

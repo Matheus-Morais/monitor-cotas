@@ -46,6 +46,11 @@ python quota_monitor.py --once --config .\config.local.json
 
 A GUI coleta em segundo plano, registra snapshots normalizados e oferece o botão `▤` para consultar o histórico. A bandeja do Windows é ativada quando `pystray` e `Pillow` estão instalados; sem eles, a GUI continua funcionando.
 
+As duas contas Claude são identificadas pelo `accountUuid`, não apenas pelo
+nome do arquivo ou e-mail. Contas duplicadas não geram históricos/alertas
+duplicados. Uma conta que ainda não foi usada pelo Claude Code aparece como
+`Sem telemetria`; ative-a e use o Claude para que o cache de uso seja criado.
+
 ## Build Windows
 
 ```powershell

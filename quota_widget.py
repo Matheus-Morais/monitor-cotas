@@ -165,6 +165,12 @@ class QuotaHUDApp:
     def get_user_email(self):
         return self.last_snapshot.claude.account if self.last_snapshot else ""
 
+    def get_user_identity(self):
+        if not self.last_snapshot:
+            return ""
+        snapshot = self.last_snapshot.claude
+        return str(snapshot.metadata.get("account_uuid") or snapshot.account or "")
+
     def setup_header(self):
         header = tk.Frame(self.main_frame, bg=BG_MAIN)
         header.pack(fill="x", pady=(0, 10))
@@ -377,12 +383,14 @@ class QuotaHUDApp:
 
     def _update_claude_bars(self, bars, snapshot):
         if snapshot.status != OK:
-            bars["sub_info"].config(text="Não configurada" if snapshot.status == "unavailable" else "Erro na leitura")
+            label = "Sem telemetria" if snapshot.account else "Não configurada"
+            bars["sub_info"].config(text=label if snapshot.status == "unavailable" else "Erro na leitura")
         else:
             bars["sub_info"].config(text=snapshot.account or "Conta")
         if "action_btn" in bars:
-            active_email = self.get_user_email()
-            if snapshot.account and snapshot.account == active_email:
+            active_identity = self.get_user_identity()
+            identity = str(snapshot.metadata.get("account_uuid") or snapshot.account or "")
+            if identity and identity == active_identity:
                 bars["action_btn"].config(text=" ✓ ATIVA ", bg=BG_MAIN, fg=COLOR_GREEN, cursor="arrow")
             else:
                 bars["action_btn"].config(text="  Ativar  ", bg=COLOR_GREEN, fg=BG_MAIN, cursor="hand2")

@@ -96,6 +96,22 @@ class QuotaCoreTests(unittest.TestCase):
         self.assertEqual(snapshot.metrics["seven_day"].remaining_pct, 69)
         self.assertIsNone(snapshot.metrics["context"].remaining_pct)
 
+    def test_claude_profile_without_usage_keeps_identity(self):
+        path = self.write_json("claude-no-cache.json", {
+            "oauthAccount": {
+                "emailAddress": "second@example.com",
+                "accountUuid": "account-2",
+                "organizationUuid": "org-2",
+            }
+        })
+
+        snapshot = quota_core.load_claude_snapshot(path)
+
+        self.assertEqual(snapshot.status, quota_core.UNAVAILABLE)
+        self.assertEqual(snapshot.account, "second@example.com")
+        self.assertEqual(snapshot.metadata["account_uuid"], "account-2")
+        self.assertFalse(snapshot.metadata["telemetry_available"])
+
     def test_codex_missing_databases(self):
         snapshot = quota_core.load_codex_snapshot(self.root / "history.db", self.root / "state.db")
         self.assertEqual(snapshot.status, quota_core.UNAVAILABLE)

@@ -35,13 +35,20 @@ class DashboardSnapshot:
     collector_error: str = ""
 
     def providers(self) -> dict[str, ProviderSnapshot]:
-        return {
-            "antigravity": self.agy,
-            "claude": self.claude,
-            "claude_profile_1": self.claude_profile_1,
-            "claude_profile_2": self.claude_profile_2,
-            "codex": self.codex,
-        }
+        providers = {"antigravity": self.agy}
+        seen_claude: set[str] = set()
+        for name, snapshot in (
+            ("claude_profile_1", self.claude_profile_1),
+            ("claude_profile_2", self.claude_profile_2),
+            ("claude", self.claude),
+        ):
+            identity = str(snapshot.metadata.get("account_uuid") or snapshot.account or name)
+            if identity in seen_claude:
+                continue
+            seen_claude.add(identity)
+            providers[name] = snapshot
+        providers["codex"] = self.codex
+        return providers
 
 
 class QuotaCollector:

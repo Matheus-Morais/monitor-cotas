@@ -115,6 +115,20 @@ class MonitorServicesTests(unittest.TestCase):
         self.assertNotIn("email", json.dumps(rows).lower())
         self.assertNotIn("token", json.dumps(rows).lower())
 
+    def test_dashboard_deduplicates_claude_accounts_by_identity(self):
+        from collector import DashboardSnapshot
+
+        active = ProviderSnapshot("claude", OK, account="same@example.com", metadata={"account_uuid": "same"})
+        profile_1 = ProviderSnapshot("claude", OK, account="same@example.com", metadata={"account_uuid": "same"})
+        profile_2 = ProviderSnapshot("claude", OK, account="other@example.com", metadata={"account_uuid": "other"})
+        snapshot = DashboardSnapshot(1000, ProviderSnapshot("antigravity", "unavailable"), active, profile_1, profile_2, ProviderSnapshot("codex", "unavailable"))
+
+        providers = snapshot.providers()
+
+        self.assertNotIn("claude", providers)
+        self.assertIn("claude_profile_1", providers)
+        self.assertIn("claude_profile_2", providers)
+
     def test_alert_cooldown_and_recovery(self):
         store = HistoryStore(self.root / "history.sqlite")
         first = store.evaluate_alerts(sample_snapshot(12), 15, 80, 3600, now=1000)

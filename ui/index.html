@@ -412,15 +412,46 @@
       color: var(--text-dim);
     }
 
+    /* Window Resizing Handles */
+    .resize-handle {
+      position: fixed;
+      z-index: 9999;
+      background: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .rh-top { top: 0; left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
+    .rh-bottom { bottom: 0; left: 10px; right: 28px; height: 6px; cursor: ns-resize; }
+    .rh-left { left: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+    .rh-right { right: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+    .rh-top-left { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+    .rh-top-right { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+    .rh-bottom-left { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+    .rh-bottom-right { bottom: 0; right: 0; width: 24px; height: 24px; cursor: nwse-resize; }
+
+    body.mode-avatar .resize-handle,
+    body.mode-avatar .resize-grip {
+      display: none !important;
+    }
+
     .resize-grip {
       cursor: nwse-resize;
-      font-size: 11px;
-      color: var(--text-dim);
-      transition: color 0.15s;
+      color: #64748b;
+      padding: 3px 5px;
+      border-radius: 4px;
+      transition: all 0.15s;
+      user-select: none;
+      -webkit-user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .resize-grip:hover {
-      color: #fff;
+      color: var(--color-cyan);
+      background: rgba(56, 189, 248, 0.15);
+      transform: scale(1.15);
     }
+
 
     /* Modal Dialog */
     .modal-overlay {
@@ -700,7 +731,17 @@
     </div>
   </div>
 
-  <div id="panelView" style="display: flex; flex-direction: column; height: 100%;">
+  <div id="panelView" style="display: flex; flex-direction: column; height: 100%; position: relative;">
+    <!-- Resize Handles -->
+    <div class="resize-handle rh-top" data-dir="top"></div>
+    <div class="resize-handle rh-bottom" data-dir="bottom"></div>
+    <div class="resize-handle rh-left" data-dir="left"></div>
+    <div class="resize-handle rh-right" data-dir="right"></div>
+    <div class="resize-handle rh-top-left" data-dir="topleft"></div>
+    <div class="resize-handle rh-top-right" data-dir="topright"></div>
+    <div class="resize-handle rh-bottom-left" data-dir="bottomleft"></div>
+    <div class="resize-handle rh-bottom-right" data-dir="bottomright"></div>
+
     <!-- Titlebar Header -->
     <header class="header">
       <div class="drag-region pywebview-drag-region">
@@ -729,9 +770,14 @@
     <!-- Footer with status & resize grip -->
     <footer class="footer">
       <span>Ctrl+Shift+C para alternar  •  Arraste as bordas para redimensionar</span>
-      <span class="resize-grip">◿</span>
+      <div class="resize-grip" data-dir="bottomright" title="Arraste para redimensionar">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M10 2L2 10M11 6L6 11M11 9L9 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
     </footer>
   </div>
+
 
   <!-- Wheel Customizer Modal -->
   <div class="modal-overlay" id="configModal">
@@ -1240,8 +1286,66 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       }
     });
 
-    // Initial render before backend is ready
+    // Dual Resize System: Native Windows modal sizing + Smooth JS drag fallback
+    function initResizeSystem() {
+      const handles = document.querySelectorAll('.resize-handle, .resize-grip');
+      handles.forEach(el => {
+        const dir = el.dataset.dir || 'bottomright';
+        el.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          // Trigger native Windows resize loop
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.start_resize) {
+            window.pywebview.api.start_resize(dir);
+          }
+          // Also engage JS drag fallback
+          startJSDrag(e, dir);
+        });
+      });
+    }
+
+    let isResizing = false;
+    let resizeDir = 'bottomright';
+    let startMouseX = 0, startMouseY = 0;
+    let startWinW = 0, startWinH = 0;
+
+    function startJSDrag(e, dir) {
+      isResizing = true;
+      resizeDir = dir;
+      startMouseX = e.screenX;
+      startMouseY = e.screenY;
+      startWinW = window.innerWidth;
+      startWinH = window.innerHeight;
+
+      const onMove = (me) => {
+        if (!isResizing) return;
+        const dx = me.screenX - startMouseX;
+        const dy = me.screenY - startMouseY;
+        let newW = startWinW;
+        let newH = startWinH;
+
+        if (resizeDir.indexOf('right') !== -1) newW = Math.max(240, startWinW + dx);
+        if (resizeDir.indexOf('left') !== -1) newW = Math.max(240, startWinW - dx);
+        if (resizeDir.indexOf('bottom') !== -1) newH = Math.max(180, startWinH + dy);
+        if (resizeDir.indexOf('top') !== -1) newH = Math.max(180, startWinH - dy);
+
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.manual_resize) {
+          window.pywebview.api.manual_resize(newW, newH);
+        }
+      };
+
+      const onUp = () => {
+        isResizing = false;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+
+    // Initial render and setup
     renderCards();
+    initResizeSystem();
   </script>
 </body>
 </html>

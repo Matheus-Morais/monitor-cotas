@@ -53,8 +53,9 @@ class MINMAXINFO(ctypes.Structure):
     ] if os.name == "nt" else []
 
 
-def _subclass_minmax(hwnd: int) -> None:
-    """Allow windows to shrink smaller than Windows SM_CXMINTRACK (down to 32x32 for avatar)."""
+def _subclass_minmax(hwnd: int, app: Any = None) -> None:
+    """Allow windows to shrink smaller than Windows SM_CXMINTRACK (down to 32x32 for avatar),
+    while maintaining appropriate min size in panel mode (240x180)."""
     if os.name != "nt":
         return
     try:
@@ -64,8 +65,12 @@ def _subclass_minmax(hwnd: int) -> None:
         def sub_proc(hwnd_in, msg, wparam, lparam, uid, ref):
             if msg == WM_GETMINMAXINFO:
                 mmi = ctypes.cast(lparam, ctypes.POINTER(MINMAXINFO)).contents
-                mmi.ptMinTrackSize.x = 32
-                mmi.ptMinTrackSize.y = 32
+                if app and getattr(app, "mode", "panel") == "panel":
+                    mmi.ptMinTrackSize.x = 240
+                    mmi.ptMinTrackSize.y = 180
+                else:
+                    mmi.ptMinTrackSize.x = 32
+                    mmi.ptMinTrackSize.y = 32
                 return 0
             return comctl32.DefSubclassProc(hwnd_in, msg, wparam, lparam)
 
@@ -74,6 +79,7 @@ def _subclass_minmax(hwnd: int) -> None:
         comctl32.SetWindowSubclass(hwnd, sub_proc_cb, 101, 0)
     except Exception:
         pass
+
 
 
 def clamp_to_work_area(x: int | None, y: int | None, width: int, height: int) -> tuple[int, int]:
@@ -263,8 +269,15 @@ class QuotaAPI:
     def toggle_avatar(self) -> None:
         self._app.toggle_mode()
 
+    def start_resize(self, direction: str) -> None:
+        self._app.start_resize(direction)
+
+    def manual_resize(self, width: int, height: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
+        return self._app.manual_resize(width, height, x, y)
+
     def close(self) -> None:
         self._app.close()
+
 
 
 class QuotaWebViewApp:
@@ -319,14 +332,77 @@ class QuotaWebViewApp:
             except Exception:
                 pass
 
+    def get_hwnd(self) -> int | None:
+        if self.window and hasattr(self.window, "native") and self.window.native:
+            try:
+                return int(str(self.window.native.Handle))
+            except Exception:
+                return None
+        return None
+
+    def start_resize(self, direction: str) -> None:
+        if self.mode != "panel":
+            return
+        hwnd = self.get_hwnd()
+        if not hwnd or os.name != "nt":
+            return
+        HT_MAP = {
+            "left": 10,
+            "right": 11,
+            "top": 12,
+            "topleft": 13,
+            "topright": 14,
+            "bottom": 15,
+            "bottomleft": 16,
+            "bottomright": 17,
+        }
+        code = HT_MAP.get(direction, 17)
+        try:
+            user32 = ctypes.windll.user32
+            GWL_STYLE = -16
+            WS_THICKFRAME = 0x00040000
+            style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+            if not (style & WS_THICKFRAME):
+                user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME)
+                user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027) # SWP_FRAMECHANGED
+            user32.ReleaseCapture()
+            user32.PostMessageW(hwnd, 0x00A1, code, 0) # WM_NCLBUTTONDOWN
+        except Exception:
+            pass
+
+    def manual_resize(self, width: int, height: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
+        if self.mode != "panel" or not self.window:
+            return {"width": width, "height": height}
+        width = max(240, int(width))
+        height = max(180, int(height))
+        hwnd = self.get_hwnd()
+        if hwnd and os.name == "nt":
+            try:
+                user32 = ctypes.windll.user32
+                SWP_NOZORDER = 0x0004
+                SWP_NOACTIVATE = 0x0010
+                flags = SWP_NOZORDER | SWP_NOACTIVATE
+                if x is None or y is None:
+                    flags |= 0x0002 # SWP_NOMOVE
+                    cur_x, cur_y = 0, 0
+                else:
+                    cur_x, cur_y = int(x), int(y)
+                user32.SetWindowPos(hwnd, 0, cur_x, cur_y, width, height, flags)
+            except Exception:
+                self.window.resize(width, height)
+        else:
+            self.window.resize(width, height)
+            if x is not None and y is not None:
+                self.window.move(int(x), int(y))
+        self.save_preferences()
+        return {"width": width, "height": height}
+
     def _apply_circular_region(self, is_avatar: bool, size: int = 72) -> None:
         """Apply native elliptical clipping in avatar mode so no square borders bleed through."""
         if os.name != "nt" or not self.window:
             return
         try:
-            hwnd = None
-            if hasattr(self.window, "native") and self.window.native:
-                hwnd = int(str(self.window.native.Handle))
+            hwnd = self.get_hwnd()
             if not hwnd:
                 return
             gdi32 = ctypes.windll.gdi32
@@ -340,6 +416,7 @@ class QuotaWebViewApp:
                 user32.SetWindowRgn(hwnd, None, True)
         except Exception:
             pass
+
 
     def save_preferences(self) -> None:
         if self.window and not self.is_minimized:
@@ -446,7 +523,19 @@ class QuotaWebViewApp:
                 self.config["avatar_position"]["y"] = ay
             else:
                 self._apply_circular_region(False)
+                hwnd = self.get_hwnd()
+                if hwnd and os.name == "nt":
+                    try:
+                        user32 = ctypes.windll.user32
+                        GWL_STYLE = -16
+                        WS_THICKFRAME = 0x00040000
+                        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+                        user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME)
+                        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
+                    except Exception:
+                        pass
                 geom = self.config.get("panel_geometry") or {}
+
                 pw = geom.get("width") or 384
                 ph = geom.get("height") or 581
                 pos = self.config.get("avatar_position") or {}
@@ -546,8 +635,16 @@ class QuotaWebViewApp:
 
         def _on_shown():
             try:
-                hwnd = int(str(self.window.native.Handle))
-                _subclass_minmax(hwnd)
+                hwnd = self.get_hwnd()
+                if hwnd:
+                    _subclass_minmax(hwnd, self)
+                    if self.mode == "panel":
+                        user32 = ctypes.windll.user32
+                        GWL_STYLE = -16
+                        WS_THICKFRAME = 0x00040000
+                        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+                        user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME)
+                        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
             except Exception:
                 pass
             if self.mode == "avatar":
@@ -555,6 +652,8 @@ class QuotaWebViewApp:
                 self._apply_circular_region(True, size)
 
         self.window.events.shown += _on_shown
+        self.window.events.resized += lambda *args: self.save_preferences()
+
 
         webview.start(debug=False)
 

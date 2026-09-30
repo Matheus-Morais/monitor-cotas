@@ -264,6 +264,7 @@ def load_codex_snapshot(
     state_db: str | os.PathLike[str],
     model: str = "gpt-5.6-luna",
     limit_5h: int = 50,
+    tokens_scale: float = 2.0,
     now: float | None = None,
 ) -> ProviderSnapshot:
     now = time.time() if now is None else now
@@ -280,7 +281,7 @@ def load_codex_snapshot(
         )
     if stats["tokens_5h"] is not None:
         metrics["tokens_5h"] = Metric(
-            min(100, int((stats["tokens_5h"] / 1_000_000) * 2)),
+            min(100, int((stats["tokens_5h"] / 1_000_000) * max(0.1, tokens_scale))),
             detail=f"{round(stats['tokens_5h'] / 1_000_000, 1)}M tokens",
             estimated=True,
         )

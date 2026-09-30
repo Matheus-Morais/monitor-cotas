@@ -21,3 +21,29 @@ python -m py_compile quota_core.py quota_monitor.py quota_widget.py test_quota_c
 ```
 
 O monitor lê os arquivos de telemetria locais das ferramentas instaladas. Credenciais e bancos de dados locais não fazem parte deste repositório.
+
+## Configuração e histórico
+
+Na primeira execução, os defaults apontam para o perfil atual do Windows. As preferências são salvas em:
+
+```text
+%APPDATA%\MonitorCotas\config.json
+%APPDATA%\MonitorCotas\history.sqlite
+```
+
+Para usar outro arquivo de configuração:
+
+```powershell
+python quota_monitor.py --once --config .\config.local.json
+.\cotas-gui.cmd --config .\config.local.json
+```
+
+A GUI coleta em segundo plano, registra snapshots normalizados e oferece o botão `▤` para consultar o histórico. A bandeja do Windows é ativada quando `pystray` e `Pillow` estão instalados; sem eles, a GUI continua funcionando.
+
+## Build Windows
+
+```powershell
+.\build.ps1 -InstallDependencies
+```
+
+O build gera `dist\MonitorCotas` usando PyInstaller em modo `onedir`.

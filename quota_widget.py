@@ -1,27 +1,19 @@
-import os
 import sys
-import time
-import json
 import datetime
-import sqlite3
-import subprocess
-import threading
+import time
+import queue
 import tkinter as tk
 from tkinter import ttk
 import keyboard
 from quota_core import (
     OK,
     format_countdown,
-    load_agy_snapshot,
-    load_claude_snapshot,
-    load_codex_snapshot,
 )
-
-AGY_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\agy-statusline-input.json"
-CLAUDE_STATUS_JSON = r"C:\Users\MOBILTEC\scripts\claude-statusline-input.json"
-CODEX_CONFIG = r"C:\Users\MOBILTEC\.codex\config.toml"
-CODEX_STATE_DB = r"C:\Users\MOBILTEC\.codex\state_5.sqlite"
-CODEX_HISTORY_DB = r"C:\Users\MOBILTEC\.codex\thread_history_1.sqlite"
+from collector import CollectorWorker, DashboardSnapshot, QuotaCollector
+from config import MonitorConfig, load_config, save_config
+from history import HistoryStore
+from notifier import OptionalTray, send_windows_toast
+from profiles import switch_profile
 
 # Cores Tema Escuro Moderno (Catppuccin Mocha)
 BG_MAIN = "#11111b"
@@ -42,29 +34,6 @@ notifications_state = {
     "codex_alerted": False
 }
 
-def send_windows_toast(title, message):
-    if sys.platform != "win32":
-        return
-    try:
-        ps_cmd = f'''
-        try {{
-            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-            $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-            $textNodes = $template.GetElementsByTagName("text")
-            $textNodes.Item(0).AppendChild($template.CreateTextNode('{title}')) > $null
-            $textNodes.Item(1).AppendChild($template.CreateTextNode('{message}')) > $null
-            $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
-            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Monitor de Cotas").Show($toast)
-        }} catch {{}}
-        '''
-        subprocess.Popen(
-            ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_cmd],
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-    except Exception as e:
-                import traceback
-                traceback.print_exc()
-
 class ProgressBarWidget(tk.Canvas):
     def __init__(self, parent, width=280, height=8, **kwargs):
         super().__init__(parent, width=width, height=height, bg=BG_CARD, highlightthickness=0, **kwargs)
@@ -81,19 +50,28 @@ class ProgressBarWidget(tk.Canvas):
             self.create_rectangle(0, 0, fill_w, self.h, fill=color, width=0)
 
 class QuotaHUDApp:
-    def __init__(self, root):
+    def __init__(self, root, config: MonitorConfig, config_path=None):
         self.root = root
+        self.config = config.normalized()
+        self.config_path = config_path
+        self.results = queue.Queue()
+        self.collector = QuotaCollector(self.config)
+        self.worker = CollectorWorker(self.collector, self.results)
+        self.history = HistoryStore(self.config.history_db)
+        self.tray = OptionalTray(
+            lambda: self.root.after(0, self.show_window),
+            lambda: self.root.after(0, self.close),
+        )
+        self.hotkey_handle = None
+        self.last_snapshot = None
+        self.last_prune_at = 0.0
         self.root.title("Monitor de Cotas")
-        self.root.geometry("520x600")
+        self.root.geometry(self._initial_geometry())
         self.root.configure(bg=BG_MAIN)
         self.root.overrideredirect(True) # Janela sem borda do windows
-        self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", 0.90)
-        self.is_topmost = True
-
-        # Posiciona no canto superior direito da tela
-        screen_w = self.root.winfo_screenwidth()
-        self.root.geometry(f"520x600+{screen_w - 540}+40")
+        self.root.attributes("-topmost", self.config.topmost)
+        self.root.attributes("-alpha", self.config.opacity)
+        self.is_topmost = self.config.topmost
 
         # Borda externa
         self.outer_frame = tk.Frame(self.root, bg=BORDER_COLOR, padx=1, pady=1)
@@ -107,15 +85,48 @@ class QuotaHUDApp:
         self.setup_header()
         self.setup_sections()
 
-        # Inicia background poller
-        self.poller = threading.Thread(target=self.background_agy_poller, daemon=True)
-        self.poller.start()
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.worker.start()
+        self.drain_results()
+        self.tray.start()
+        try:
+            self.hotkey_handle = keyboard.add_hotkey(
+                self.config.global_hotkey,
+                lambda: self.root.after(0, self.toggle_visibility),
+            )
+        except (OSError, ValueError):
+            self.hotkey_handle = None
 
-        # Loop de atualizacao a cada 1s
-        self.update_data()
-        
-        # Global hotkey
-        keyboard.add_hotkey('ctrl+shift+c', lambda: self.root.after(0, self.toggle_visibility))
+    def _initial_geometry(self):
+        width = self.config.window_width
+        height = self.config.window_height
+        if self.config.window_x is not None and self.config.window_y is not None:
+            return f"{width}x{height}+{self.config.window_x}+{self.config.window_y}"
+        screen_w = self.root.winfo_screenwidth()
+        return f"{width}x{height}+{screen_w - width - 20}+40"
+
+    def show_window(self):
+        self.root.deiconify()
+        self.root.lift()
+
+    def close(self):
+        self.config.window_width = self.root.winfo_width() or self.config.window_width
+        self.config.window_height = self.root.winfo_height() or self.config.window_height
+        self.config.window_x = self.root.winfo_x()
+        self.config.window_y = self.root.winfo_y()
+        self.config.topmost = self.is_topmost
+        try:
+            save_config(self.config, self.config_path)
+        except OSError:
+            pass
+        if self.hotkey_handle is not None:
+            try:
+                keyboard.remove_hotkey(self.hotkey_handle)
+            except (KeyError, OSError):
+                pass
+        self.worker.stop(timeout=2.0)
+        self.tray.stop()
+        self.root.destroy()
 
     def toggle_visibility(self):
         if self.root.winfo_viewable():
@@ -124,12 +135,7 @@ class QuotaHUDApp:
             self.root.deiconify()
 
     def get_user_email(self):
-        try:
-            with open(r"C:\Users\MOBILTEC\.claude.json", "r", encoding="utf-8") as f:
-                d = json.load(f)
-            return d.get("oauthAccount", {}).get("emailAddress", "")
-        except:
-            return ""
+        return self.last_snapshot.claude.account if self.last_snapshot else ""
 
     def setup_header(self):
         header = tk.Frame(self.main_frame, bg=BG_MAIN)
@@ -152,6 +158,9 @@ class QuotaHUDApp:
         self.email_lbl = tk.Label(header, text=email_str, font=("Segoe UI", 9), fg=COLOR_CYAN, bg=BG_MAIN)
         self.email_lbl.pack(side="left", padx=4)
 
+        self.status_lbl = tk.Label(header, text="Coletando...", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=BG_MAIN)
+        self.status_lbl.pack(side="left", padx=4)
+
         # Botoes: Pin (Sempre no topo), Minimizar, Fechar
         close_btn = tk.Label(header, text="✕", font=("Segoe UI", 14, "bold"), fg=TEXT_MUTED, bg=BG_MAIN, cursor="hand2")
         close_btn.pack(side="right", padx=(8, 0))
@@ -164,6 +173,10 @@ class QuotaHUDApp:
         self.refresh_btn = tk.Label(header, text="🔄", font=("Segoe UI", 14), fg=COLOR_CYAN, bg=BG_MAIN, cursor="hand2")
         self.refresh_btn.pack(side="right", padx=6)
         self.refresh_btn.bind("<Button-1>", self.force_update)
+
+        history_btn = tk.Label(header, text="▤", font=("Segoe UI", 14), fg=COLOR_CYAN, bg=BG_MAIN, cursor="hand2")
+        history_btn.pack(side="right", padx=6)
+        history_btn.bind("<Button-1>", self.show_history)
 
     def start_drag(self, event):
         self._drag_data["x"] = event.x
@@ -185,35 +198,60 @@ class QuotaHUDApp:
         self.root.attributes("-topmost", self.is_topmost)
         self.pin_btn.config(fg=COLOR_CYAN if self.is_topmost else TEXT_MUTED)
 
+    def show_history(self, event=None):
+        window = tk.Toplevel(self.root)
+        window.title("Histórico de Cotas")
+        window.geometry("760x420")
+        window.configure(bg=BG_MAIN)
+        columns = ("hora", "provedor", "métrica", "restante", "status", "detalhe")
+        tree = ttk.Treeview(window, columns=columns, show="headings")
+        headings = {
+            "hora": "Data/hora",
+            "provedor": "Provedor",
+            "métrica": "Métrica",
+            "restante": "Restante",
+            "status": "Status",
+            "detalhe": "Detalhe",
+        }
+        for column in columns:
+            tree.heading(column, text=headings[column])
+            tree.column(column, width=110 if column != "detalhe" else 190, anchor="w")
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        try:
+            rows = self.history.recent(limit=100)
+        except OSError:
+            rows = []
+        for collected_at, provider, metric, status, remaining, _reset, detail, estimated in rows:
+            timestamp = datetime.datetime.fromtimestamp(collected_at).strftime("%d/%m %H:%M:%S")
+            remaining_text = "N/D" if remaining is None else f"{remaining}%"
+            if estimated:
+                remaining_text += " (est.)"
+            tree.insert("", "end", values=(timestamp, provider, metric, remaining_text, status, detail))
+
     def force_update(self, event=None):
-        def trigger():
-            try:
-                subprocess.run(
-                    ["agy", "--print", "/usage"],
-                    capture_output=True,
-                    timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                )
-            except:
-                pass
-        threading.Thread(target=trigger, daemon=True).start()
-        self.update_data()
+        self.worker.refresh_now()
 
     def switch_claude1(self, event=None):
-        import shutil, os
         try:
-            shutil.copy(r'C:\Users\MOBILTEC\.claude-1.json', r'C:\Users\MOBILTEC\.claude.json')
-        except:
-            pass
-        self.update_data()
+            switch_profile(
+                self.config.claude_active_json,
+                self.config.claude_profile_1_json,
+                self.config.history_db.parent / "backups",
+            )
+            self.worker.refresh_now()
+        except (OSError, FileNotFoundError) as exc:
+            send_windows_toast("Monitor de Cotas", f"Não foi possível ativar o perfil: {exc}")
         
     def switch_claude2(self, event=None):
-        import shutil, os
         try:
-            shutil.copy(r'C:\Users\MOBILTEC\.claude-2.json', r'C:\Users\MOBILTEC\.claude.json')
-        except:
-            pass
-        self.update_data()
+            switch_profile(
+                self.config.claude_active_json,
+                self.config.claude_profile_2_json,
+                self.config.history_db.parent / "backups",
+            )
+            self.worker.refresh_now()
+        except (OSError, FileNotFoundError) as exc:
+            send_windows_toast("Monitor de Cotas", f"Não foi possível ativar o perfil: {exc}")
 
     def setup_sections(self):
         # Section 1: Antigravity
@@ -324,52 +362,74 @@ class QuotaHUDApp:
         self._set_metric(bars, "claude_7d" if bars is self.claude_bars else "c2_7d", snapshot.metrics.get("seven_day"))
         self._set_metric(bars, "claude_ctx" if bars is self.claude_bars else "c2_ctx", snapshot.metrics.get("context"))
 
-    def update_data(self):
-        self.clock_lbl.config(text=datetime.datetime.now().strftime("%H:%M:%S"))
+    def _handle_alerts(self, snapshot):
+        try:
+            events = self.history.evaluate_alerts(
+                snapshot,
+                self.config.alert_threshold_pct,
+                self.config.alert_recovery_pct,
+                self.config.alert_cooldown_seconds,
+            )
+        except OSError:
+            events = []
+        names = {
+            "antigravity": "Antigravity",
+            "claude": "Claude Code",
+            "claude_profile_1": "Claude Code 1",
+            "claude_profile_2": "Claude Code 2",
+            "codex": "Codex",
+        }
+        for event in events:
+            send_windows_toast(
+                f"{names.get(event.provider, event.provider)} - {event.message}",
+                f"{event.metric}: {event.remaining_pct}%",
+            )
 
-        agy = load_agy_snapshot(AGY_STATUS_JSON)
+    def render_snapshot(self, snapshot: DashboardSnapshot):
+        self.last_snapshot = snapshot
+        self.email_lbl.config(text=snapshot.claude.account)
+        if snapshot.collector_error:
+            self.status_lbl.config(text="Erro na coleta", fg=COLOR_RED)
+        else:
+            self.status_lbl.config(text=f"Atualizado {datetime.datetime.fromtimestamp(snapshot.collected_at).strftime('%H:%M:%S')}", fg=TEXT_MUTED)
+
+        agy = snapshot.agy
         for key, core_key in (("gemini_5h", "gemini_5h"), ("gemini_w", "gemini_weekly"), ("agy_3p", "3p_5h")):
             self._set_metric(self.agy_bars, key, agy.metrics.get(core_key))
-        primary = agy.metrics.get("gemini_5h")
-        if primary and primary.remaining_pct is not None and primary.remaining_pct <= 15 and not notifications_state["agy_alerted"]:
-            send_windows_toast("Alerta Antigravity", f"Cota Gemini em {primary.remaining_pct}%!")
-            notifications_state["agy_alerted"] = True
+        self._update_claude_bars(self.claude_bars, snapshot.claude_profile_1)
+        self._update_claude_bars(self.claude2_bars, snapshot.claude_profile_2)
+        self._set_metric(self.codex_bars, "codex_5h", snapshot.codex.metrics.get("five_hour"))
+        self._set_metric(self.codex_bars, "codex_tok", snapshot.codex.metrics.get("tokens_5h"))
+        self._set_metric(self.codex_bars, "codex_7d", snapshot.codex.metrics.get("seven_day"))
 
-        active_email = self.get_user_email()
-        c1_path = r"C:\Users\MOBILTEC\.claude-1.json"
-        c2_path = r"C:\Users\MOBILTEC\.claude-2.json"
-        c1 = load_claude_snapshot(c1_path if os.path.exists(c1_path) else r"C:\Users\MOBILTEC\.claude.json")
-        c2 = load_claude_snapshot(c2_path if os.path.exists(c2_path) else r"C:\Users\MOBILTEC\.claude.json")
-        if c1.account == active_email and active_email:
-            c1 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
-        if c2.account == active_email and active_email:
-            c2 = load_claude_snapshot(r"C:\Users\MOBILTEC\.claude.json")
-        self._update_claude_bars(self.claude_bars, c1)
-        self._update_claude_bars(self.claude2_bars, c2)
-
-        codex = load_codex_snapshot(CODEX_HISTORY_DB, CODEX_STATE_DB)
-        self._set_metric(self.codex_bars, "codex_5h", codex.metrics.get("five_hour"))
-        self._set_metric(self.codex_bars, "codex_tok", codex.metrics.get("tokens_5h"))
-        self._set_metric(self.codex_bars, "codex_7d", codex.metrics.get("seven_day"))
-
-        self.root.after(1000, self.update_data)
-
-    def background_agy_poller(self):
+    def drain_results(self):
+        self.clock_lbl.config(text=datetime.datetime.now().strftime("%H:%M:%S"))
+        latest = None
         while True:
             try:
-                subprocess.run(
-                    ["agy", "--print", "/usage"],
-                    capture_output=True,
-                    timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                )
-            except Exception:
-                pass
-            time.sleep(120)
+                latest = self.results.get_nowait()
+            except queue.Empty:
+                break
+        if latest is not None:
+            self.render_snapshot(latest)
+            try:
+                self.history.record_dashboard(latest)
+                self._handle_alerts(latest)
+                if time.time() - self.last_prune_at >= 3600:
+                    self.history.prune(self.config.history_retention_days)
+                    self.last_prune_at = time.time()
+            except OSError:
+                self.status_lbl.config(text="Histórico indisponível", fg=COLOR_YELLOW)
+        self.root.after(100, self.drain_results)
 
 def main():
     root = tk.Tk()
-    app = QuotaHUDApp(root)
+    config_path = None
+    if "--config" in sys.argv:
+        index = sys.argv.index("--config")
+        if index + 1 < len(sys.argv):
+            config_path = sys.argv[index + 1]
+    app = QuotaHUDApp(root, load_config(config_path), config_path)
     root.mainloop()
 
 if __name__ == "__main__":

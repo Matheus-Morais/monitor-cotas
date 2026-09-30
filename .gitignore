@@ -8,3 +8,7 @@ env/
 .env
 .idea/
 .vscode/
+dist/
+build/
+*.spec
+config.local.json

@@ -123,13 +123,12 @@ class QuotaCoreTests(unittest.TestCase):
     def test_presentations_use_shared_core(self):
         import quota_monitor
         import quota_widget
+        import collector
 
         self.assertIs(quota_monitor.format_countdown, quota_core.format_countdown)
         self.assertIs(quota_widget.format_countdown, quota_core.format_countdown)
-        for module in (quota_monitor, quota_widget):
-            self.assertIs(module.load_agy_snapshot, quota_core.load_agy_snapshot)
-            self.assertIs(module.load_claude_snapshot, quota_core.load_claude_snapshot)
-            self.assertIs(module.load_codex_snapshot, quota_core.load_codex_snapshot)
+        self.assertIs(quota_monitor.QuotaCollector, collector.QuotaCollector)
+        self.assertIs(quota_widget.QuotaCollector, collector.QuotaCollector)
 
     def test_format_countdown_is_shared_and_deterministic(self):
         self.assertEqual(quota_core.format_countdown(3661, now=0), "1h 01m 01s")

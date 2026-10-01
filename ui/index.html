@@ -171,10 +171,11 @@
       background: var(--border-color);
     }
 
-    .app-title .bolt {
-      color: #fbbf24;
-      font-size: 13px;
-      filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.5));
+    .app-logo {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      flex-shrink: 0;
     }
 
     .status-badge {
@@ -277,6 +278,13 @@
       display: flex;
       align-items: center;
       gap: 7px;
+      min-width: 0;
+    }
+    .card-title-group .card-title,
+    .card-title-group .card-plan {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .provider-dot {
@@ -307,10 +315,13 @@
     }
     .label-mode-group {
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
     }
     .label-mode-btn {
-      flex: 1;
+      flex: 1 1 88px;
+      min-width: 0;
+      white-space: nowrap;
       padding: 6px 4px;
       font-size: 11px;
       color: var(--text-muted);
@@ -336,6 +347,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-shrink: 0;
     }
 
     .account-badge {
@@ -397,6 +409,8 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      flex-wrap: wrap;
+      row-gap: 6px;
       gap: 20px;
       padding: 2px 0 0 0;
       transition: all 0.3s ease;
@@ -615,7 +629,8 @@
     }
     .modal-body {
       padding: 14px 18px;
-      max-height: 380px;
+      max-height: min(380px, calc(100vh - 170px));
+      overflow-x: hidden;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -699,6 +714,8 @@
       padding: 12px 18px;
       border-top: 1px solid var(--border-color);
       display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       justify-content: space-between;
       background: rgba(14, 15, 23, 0.8);
     }
@@ -731,12 +748,6 @@
       .header {
         padding: 7px 10px;
       }
-      .status-badge span {
-        display: none;
-      }
-      .status-badge {
-        padding: 4px;
-      }
       .account-badge {
         max-width: 90px;
         font-size: 9px;
@@ -747,34 +758,48 @@
       .card-title {
         font-size: 11px;
       }
-      .icon-btn {
-        width: 24px;
-        height: 24px;
-        font-size: 11px;
+    }
+
+    @media (max-width: 340px) {
+      .footer {
+        justify-content: flex-end;
+      }
+      .footer > span {
+        display: none;
+      }
+      .modal-card {
+        width: calc(100% - 16px);
+      }
+      .modal-header {
+        padding: 10px 12px;
+      }
+      .modal-body {
+        padding: 10px 12px;
+      }
+      .modal-provider-sec {
+        padding: 8px 10px;
+      }
+      .modal-footer {
+        padding: 10px 12px;
+      }
+    }
+
+    @media (max-width: 350px) {
+      .status-badge span {
+        display: none;
+      }
+      .status-badge {
+        padding: 4px;
       }
     }
 
     /* Auto width keeps the status text and e-mail badge readable even when the panel is slim */
-    body.fit-width .status-badge span {
-      display: inline;
-    }
-    body.fit-width .status-badge {
-      padding: 2px 7px;
-    }
-    body.fit-width .icon-btn {
-      width: 28px;
-      height: 28px;
-      font-size: 15px;
-    }
-    body.fit-width .header {
-      padding: 10px 14px;
-    }
     body.fit-width .account-badge {
       max-width: 220px;
       font-size: 10px;
     }
 
-    @media (max-width: 330px) {
+    @media (max-width: 300px) {
       .app-title .title-text {
         display: none;
       }
@@ -1146,7 +1171,7 @@
     <header class="header">
       <div class="drag-region pywebview-drag-region">
         <div class="app-title">
-          <span class="bolt">⚡</span> <span class="title-text">TokenWatch<span class="title-view" id="titleView"> · Cotas</span></span>
+          <img class="app-logo" src="logos/tokenwatch.png" alt="TokenWatch"> <span class="title-text">TokenWatch<span class="title-view" id="titleView"> · Cotas</span></span>
         </div>
 
         <div class="status-badge">
@@ -1277,7 +1302,7 @@
 
     <!-- Footer with status & resize grip -->
     <footer class="footer">
-      <span>Ctrl+Shift+C para alternar  •  Arraste as bordas para redimensionar</span>
+      <span title="Ctrl+Shift+C para alternar • Arraste as bordas para redimensionar">Ctrl+Shift+C para alternar  •  Arraste as bordas para redimensionar</span>
       <div class="resize-grip" data-dir="bottomright" title="Arraste para redimensionar">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M10 2L2 10M11 6L6 11M11 9L9 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -1452,6 +1477,11 @@
       }
     }
 
+    function setHeaderStatus(text) {
+      document.getElementById("headerStatusText").innerText = text;
+      document.querySelector(".status-badge").title = text;
+    }
+
     function getHealthColor(pct) {
       if (pct === null || pct === undefined) return "#94a3b8";
       if (pct <= 15) return "#f87171";
@@ -1489,12 +1519,12 @@
         return { size: 52, stroke: 4.5, radius: 20 };
       }
       if (numMetrics === 3) {
-        if (isUltraNarrow) return { size: 36, stroke: 3.5, radius: 13 };
+        if (isUltraNarrow) return { size: 40, stroke: 3.5, radius: 15 };
         if (isNarrow) return { size: 42, stroke: 4, radius: 15 };
         return { size: 48, stroke: 4.5, radius: 18 };
       }
       // 4 or more
-      if (isUltraNarrow) return { size: 32, stroke: 3, radius: 11 };
+      if (isUltraNarrow) return { size: 36, stroke: 3, radius: 13.5 };
       if (isNarrow) return { size: 36, stroke: 3.5, radius: 13 };
       return { size: 44, stroke: 4, radius: 16 };
     }
@@ -1584,9 +1614,17 @@
                 ? circumference - (pct / 100) * circumference 
                 : circumference;
 
+              // Keep the label inside the ring: scale the font to the inner circle (4 chars like "100%" are the widest)
+              const ringLabel = pct !== null && pct !== undefined ? pct + '%' : 'N/D';
+              const innerDiameter = 2 * ringParams.radius - ringParams.stroke;
+              const ringFont = Math.min(11, Math.floor((innerDiameter * 0.92 / (ringLabel.length * 0.62)) * 10) / 10);
+
               const tile = document.createElement("div");
               tile.className = "metric-tile";
-              tile.style.width = ringParams.size + "px";
+              // On narrow windows the tile must also fit its reset text, otherwise neighbours overlap
+              const narrowText = !isFitWidth() && (document.body.clientWidth || window.innerWidth) < 330;
+              const textW = resetHint ? Math.ceil(("⏱ " + resetHint).length * 5.4) : 0;
+              tile.style.width = Math.max(ringParams.size, narrowText ? textW : 0) + "px";
               tile.innerHTML = `
                 <span class="metric-label">${def.label}</span>
                 <div class="ring-wrapper" style="width: ${ringParams.size}px; height: ${ringParams.size}px;">
@@ -1597,8 +1635,8 @@
                       r="${ringParams.radius}" cx="${ringParams.size / 2}" cy="${ringParams.size / 2}"
                       style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${offset};"/>
                   </svg>
-                  <span class="ring-text" style="color: ${color};">
-                    ${pct !== null && pct !== undefined ? pct + '%' : 'N/D'}
+                  <span class="ring-text" style="color: ${color}; font-size: ${ringFont}px;">
+                    ${ringLabel}
                   </span>
                 </div>
                 <span class="metric-reset">${resetHint ? '⏱ ' + resetHint : ''}</span>
@@ -1758,7 +1796,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
     async function handleRefresh() {
       const btn = document.getElementById("refreshBtn");
       btn.classList.add("spin");
-      document.getElementById("headerStatusText").innerText = "Atualizando...";
+      setHeaderStatus("Atualizando...");
       if (window.pywebview && window.pywebview.api) {
         try {
           const snaps = await window.pywebview.api.force_refresh();
@@ -1772,7 +1810,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       }
       setTimeout(() => {
         btn.classList.remove("spin");
-        document.getElementById("headerStatusText").innerText = "Atualizado";
+        setHeaderStatus("Atualizado");
       }, 500);
     }
 
@@ -2280,8 +2318,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
     window.updateHUD = function(snapshots) {
       if (!snapshots) return;
       currentSnapshots = snapshots;
-      const statusText = document.getElementById("headerStatusText");
-      if (statusText) statusText.innerText = "Atualizado";
+      setHeaderStatus("Atualizado");
 
       if (currentMode === "avatar") {
         renderAvatar();
@@ -2304,7 +2341,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
           currentSnapshots = data.snapshots || {};
           const initialMode = data.mode || (data.config && data.config.ui_mode) || "panel";
           applyMode(initialMode);
-          document.getElementById("headerStatusText").innerText = "Atualizado";
+          setHeaderStatus("Atualizado");
         }
       } catch (err) {
         console.error("Init error:", err);
@@ -2373,6 +2410,10 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         if (!isResizing) return;
         const dx = me.screenX - startMouseX;
         const dy = me.screenY - startMouseY;
+        const horizontal = resizeDir.indexOf('left') !== -1 || resizeDir.indexOf('right') !== -1;
+        const vertical = resizeDir.indexOf('top') !== -1 || resizeDir.indexOf('bottom') !== -1;
+        if (horizontal && Math.abs(dx) > 3 && currentConfig.auto_width !== false) setOption('auto_width', false);
+        if (vertical && Math.abs(dy) > 3 && currentConfig.auto_height !== false) setOption('auto_height', false);
         let newW = startWinW;
         let newH = startWinH;
 

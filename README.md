@@ -1,4 +1,8 @@
-# ⚡ TokenWatch
+<p align="center">
+  <img src="assets/icon/tokenwatch.png" alt="TokenWatch logo" width="96" />
+</p>
+
+<h1 align="center">TokenWatch</h1>
 
 <p align="center">
   <strong>The real-time quota, rate-limit & token HUD for AI coding assistants.</strong><br>

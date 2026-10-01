@@ -38,6 +38,11 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(normalize_config({"provider_label_mode": "logo"})["provider_label_mode"], "logo")
         self.assertEqual(normalize_config({"provider_label_mode": "xyz"})["provider_label_mode"], "both")
 
+    def test_metrics_align(self):
+        self.assertEqual(normalize_config({})["metrics_align"], "center")
+        self.assertEqual(normalize_config({"metrics_align": "left"})["metrics_align"], "left")
+        self.assertEqual(normalize_config({"metrics_align": "top"})["metrics_align"], "center")
+
     def test_normalize_enforces_boundaries(self):
         raw = {
             "ui_mode": "invalid_mode",

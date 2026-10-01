@@ -1311,6 +1311,17 @@
       }
     }
 
+    function setMetricsAlign(align) {
+      currentConfig.metrics_align = align;
+      renderCards();
+      renderModalOptions();
+      if (window.pywebview) {
+        window.pywebview.api.set_metrics_align(align).then(cfg => {
+          currentConfig = cfg;
+        });
+      }
+    }
+
     function getHealthColor(pct) {
       if (pct === null || pct === undefined) return "#94a3b8";
       if (pct <= 15) return "#f87171";
@@ -1402,6 +1413,7 @@
         if (!isCollapsed) {
           const body = document.createElement("div");
           body.className = "metrics-container";
+          body.style.justifyContent = {left: "flex-start", right: "flex-end"}[currentConfig.metrics_align] || "center";
           
           const windowWidth = document.body.clientWidth || window.innerWidth;
           if (windowWidth < 340) {
@@ -1467,12 +1479,21 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       modeSec.className = "modal-provider-sec";
       const modeBtn = (value, text) =>
         `<button class="label-mode-btn ${mode === value ? 'active' : ''}" onclick="setLabelMode('${value}')">${text}</button>`;
+      const align = currentConfig.metrics_align || "center";
+      const alignBtn = (value, text) =>
+        `<button class="label-mode-btn ${align === value ? 'active' : ''}" onclick="setMetricsAlign('${value}')">${text}</button>`;
       modeSec.innerHTML = `
         <div class="modal-provider-title"><span>Identificação do provedor</span></div>
         <div class="label-mode-group">
           ${modeBtn('both', 'Logo + nome')}
           ${modeBtn('logo', 'Só logo')}
           ${modeBtn('name', 'Só nome')}
+        </div>
+        <div class="modal-provider-title" style="margin-top: 12px;"><span>Alinhamento das rodas</span></div>
+        <div class="label-mode-group">
+          ${alignBtn('left', 'Esquerda')}
+          ${alignBtn('center', 'Centro')}
+          ${alignBtn('right', 'Direita')}
         </div>
       `;
       container.appendChild(modeSec);

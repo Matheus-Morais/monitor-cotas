@@ -21,6 +21,7 @@ import webview
 from history import HistoryStore
 from services.config_manager import (
     DEFAULT_VISIBLE_METRICS,
+    METRICS_ALIGN_MODES,
     PROVIDER_LABEL_MODES,
     ConfigManager,
     resolve_history_db_path,
@@ -69,6 +70,12 @@ class QuotaAPI:
         """Choose how providers are labeled: 'both', 'logo' or 'name'."""
         if mode in PROVIDER_LABEL_MODES:
             self._app.config_manager.set("provider_label_mode", mode)
+        return self._app.config_manager.data
+
+    def set_metrics_align(self, align: str) -> dict[str, Any]:
+        """Choose the horizontal alignment of the rings: 'left', 'center' or 'right'."""
+        if align in METRICS_ALIGN_MODES:
+            self._app.config_manager.set("metrics_align", align)
         return self._app.config_manager.data
 
     def reset_all_metrics(self) -> dict[str, Any]:

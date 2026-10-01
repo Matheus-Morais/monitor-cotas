@@ -23,6 +23,7 @@ DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
 }
 
 PROVIDER_LABEL_MODES = ("both", "logo", "name")
+METRICS_ALIGN_MODES = ("left", "center", "right")
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "ui_mode": "panel",
@@ -32,6 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "show_in_taskbar": False,
     "compact_mode": False,
     "provider_label_mode": "both",
+    "metrics_align": "center",
     "collapsed_cards": {
         "agy": False,
         "claude1": False,
@@ -163,6 +165,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "show_in_taskbar": DEFAULT_CONFIG["show_in_taskbar"],
         "compact_mode": DEFAULT_CONFIG["compact_mode"],
         "provider_label_mode": DEFAULT_CONFIG["provider_label_mode"],
+        "metrics_align": DEFAULT_CONFIG["metrics_align"],
         "collapsed_cards": dict(DEFAULT_CONFIG["collapsed_cards"]),
         "visible_metrics": {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()},
         "refresh_seconds": DEFAULT_CONFIG["refresh_seconds"],
@@ -210,6 +213,9 @@ def normalize_config(raw: Any) -> dict[str, Any]:
     label_mode = raw.get("provider_label_mode")
     if label_mode in PROVIDER_LABEL_MODES:
         config["provider_label_mode"] = label_mode
+
+    if raw.get("metrics_align") in METRICS_ALIGN_MODES:
+        config["metrics_align"] = raw["metrics_align"]
 
     # Collapsed Cards
     if isinstance(raw.get("collapsed_cards"), dict):

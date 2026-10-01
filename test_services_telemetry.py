@@ -36,7 +36,44 @@ class DummyProvider(BaseProvider):
         return True
 
 
+class SequenceProvider(BaseProvider):
+    """Returns the given snapshots in order, repeating the last one."""
+
+    def __init__(self, key, snapshots):
+        super().__init__(key=key, display_name=key)
+        self.snapshots = list(snapshots)
+
+    def is_available(self) -> bool:
+        return True
+
+    def collect(self) -> ProviderSnapshot:
+        return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
+
+
 class TestTelemetryService(unittest.TestCase):
+    def test_plan_is_remembered_when_source_omits_it(self):
+        saved = []
+        with_plan = ProviderSnapshot("antigravity", "ok", {}, plan="Google AI Pro")
+        without_plan = ProviderSnapshot("antigravity", "ok", {})
+        provider = SequenceProvider("agy", [with_plan, without_plan])
+        service = TelemetryService(
+            providers=[provider],
+            profile_service=MagicMock(get_active_email=lambda: ""),
+            on_plans_changed=saved.append,
+        )
+        self.assertEqual(service.collect()["agy"]["plan"], "Google AI Pro")
+        self.assertEqual(service.collect()["agy"]["plan"], "Google AI Pro")
+        self.assertEqual(saved, [{"agy": "Google AI Pro"}])
+
+    def test_known_plans_survive_restart(self):
+        provider = SequenceProvider("agy", [ProviderSnapshot("antigravity", "ok", {})])
+        service = TelemetryService(
+            providers=[provider],
+            profile_service=MagicMock(get_active_email=lambda: ""),
+            known_plans={"agy": "Google AI Pro"},
+        )
+        self.assertEqual(service.collect()["agy"]["plan"], "Google AI Pro")
+
     def test_serialize_snapshot_none(self):
         serialized = serialize_snapshot(None)
         self.assertEqual(serialized["status"], "unavailable")

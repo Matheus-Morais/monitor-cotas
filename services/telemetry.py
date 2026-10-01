@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
 from typing import Any, Callable, Sequence
@@ -59,6 +60,8 @@ class TelemetryService:
         refresh_interval: float = 3.0,
         agy_poll_interval: float = 120.0,
         anti_flicker_seconds: float = DEFAULT_ANTI_FLICKER_SECONDS,
+        known_plans: dict[str, str] | None = None,
+        on_plans_changed: Callable[[dict[str, str]], None] | None = None,
     ):
         self.profile_service = profile_service or ProfileService()
         self.history_store = history_store
@@ -75,6 +78,9 @@ class TelemetryService:
                 ClaudeProvider(2, active_email_getter=self.profile_service.get_active_email),
                 CodexProvider(),
             ]
+
+        self.known_plans: dict[str, str] = dict(known_plans or {})
+        self._on_plans_changed = on_plans_changed
 
         self._lock = threading.RLock()
         self._last_snapshots: dict[str, ProviderSnapshot] = {}
@@ -96,6 +102,22 @@ class TelemetryService:
         with self._lock:
             if callback in self._listeners:
                 self._listeners.remove(callback)
+
+    def _remember_plan(self, key: str, snapshot: ProviderSnapshot) -> ProviderSnapshot:
+        """Keep the last plan seen for a provider, since some sources report it only now and then."""
+        if snapshot is None:
+            return snapshot
+        if snapshot.plan:
+            if self.known_plans.get(key) != snapshot.plan:
+                self.known_plans[key] = snapshot.plan
+                if self._on_plans_changed:
+                    try:
+                        self._on_plans_changed(dict(self.known_plans))
+                    except Exception:
+                        pass
+            return snapshot
+        remembered = self.known_plans.get(key)
+        return dataclasses.replace(snapshot, plan=remembered) if remembered else snapshot
 
     def collect(self) -> dict[str, Any]:
         """Collect snapshots from all providers with anti-flicker caching."""
@@ -128,6 +150,7 @@ class TelemetryService:
                             snapshot = cached_snapshot
                             is_stale = True
 
+                snapshot = self._remember_plan(provider.key, snapshot)
                 self._last_snapshots[provider.key] = snapshot
                 results[provider.key] = serialize_snapshot(snapshot, active_email, is_stale=is_stale)
 

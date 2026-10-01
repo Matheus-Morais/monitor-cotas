@@ -1,2 +1,2 @@
 @echo off
-start "" pythonw "%~dp0quota_widget_compact.py" %*
+start "" pythonw "%~dp0quota_webview_app.py" %*

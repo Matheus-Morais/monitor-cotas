@@ -20,6 +20,17 @@ class MockApp:
         }
         self.profile_service = MagicMock()
         self.profile_service.switch_account_number.return_value = True
+        self.history_store = MagicMock()
+        self.history_store.query_history.return_value = {
+            "provider": "agy",
+            "metric": "gemini_5h",
+            "points": [{"t": 1000.0, "pct": 95, "status": "ok"}],
+            "burn_rate_pct_hr": 2.5,
+            "eta_seconds": 3600,
+        }
+        self.history_store.get_available_metrics.return_value = [
+            {"provider": "agy", "metric": "gemini_5h"}
+        ]
 
         self.is_pinned = True
         self.window = None
@@ -99,6 +110,22 @@ class TestQuotaAPI(unittest.TestCase):
         res = self.api.manual_resize(100, 100)
         self.assertEqual(res["width"], 240)
         self.assertEqual(res["height"], 180)
+
+    def test_get_history(self):
+        res = self.api.get_history("agy", "gemini_5h", "6h")
+        self.mock_app.history_store.query_history.assert_called_with(
+            provider="agy",
+            metric="gemini_5h",
+            range_seconds=21600.0,
+            max_points=120,
+        )
+        self.assertEqual(res["burn_rate_pct_hr"], 2.5)
+
+    def test_get_history_providers(self):
+        res = self.api.get_history_providers()
+        self.mock_app.history_store.get_available_metrics.assert_called_once()
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["provider"], "agy")
 
 
 if __name__ == "__main__":

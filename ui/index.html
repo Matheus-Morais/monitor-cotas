@@ -703,6 +703,310 @@
       font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif;
       cursor: pointer;
     }
+
+    /* Main View Tabs (Segmented Switcher) */
+    .view-tabs {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 2px;
+      gap: 2px;
+      margin-left: 6px;
+    }
+    .view-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.18s ease;
+      user-select: none;
+    }
+    .view-tab-btn:hover {
+      color: var(--text-main);
+    }
+    .view-tab-btn.active {
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    /* Analytics Container */
+    .analytics-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      gap: 10px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Provider Chips Bar */
+    .analytics-chips-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .chips-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      flex: 1;
+    }
+    .chip-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .chip-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+    }
+    .chip-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.5);
+      color: #38bdf8;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+    }
+    .chip-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Time Range Pills */
+    .time-pills {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 2px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+    .range-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .range-btn:hover {
+      color: var(--text-main);
+    }
+    .range-btn.active {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    /* Stats Grid */
+    .analytics-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-title {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .stat-val {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-main);
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      letter-spacing: -0.3px;
+    }
+    .stat-sub {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    /* Chart Box */
+    .chart-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .chart-box-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .chart-box-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .chart-status-badge {
+      font-size: 9px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+    .pulse-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 6px #34d399;
+      animation: pulseAnim 2s infinite;
+    }
+    @keyframes pulseAnim {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Interactive SVG Canvas */
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      height: 165px;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: crosshair;
+    }
+    .history-chart-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .chart-grid-line {
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 1;
+      stroke-dasharray: 3 3;
+    }
+    .chart-grid-text {
+      font-size: 8px;
+      fill: var(--text-dim);
+      font-family: inherit;
+    }
+    .chart-area {
+      fill: url(#chartAreaGradient);
+      opacity: 0.35;
+      transition: d 0.25s ease;
+    }
+    .chart-line {
+      fill: none;
+      stroke: #38bdf8;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+      transition: d 0.25s ease;
+    }
+    .chart-hairline {
+      stroke: rgba(255, 255, 255, 0.4);
+      stroke-width: 1;
+      stroke-dasharray: 2 2;
+      pointer-events: none;
+    }
+    .chart-cursor {
+      fill: #38bdf8;
+      stroke: #fff;
+      stroke-width: 2;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.9));
+      pointer-events: none;
+    }
+    .chart-baseline {
+      stroke: rgba(255, 255, 255, 0.15);
+      stroke-width: 1.5;
+      stroke-dasharray: 4 4;
+    }
+
+    /* Tooltip */
+    .chart-tooltip {
+      position: absolute;
+      top: 10px;
+      background: rgba(18, 20, 32, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 10px;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+      transform: translate(-50%, -120%);
+      transition: opacity 0.1s ease, transform 0.05s ease;
+    }
+    .tooltip-time {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .tooltip-pct {
+      font-size: 13px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .tooltip-detail {
+      font-size: 9px;
+      color: var(--text-dim);
+      margin-top: 1px;
+    }
   </style>
 </head>
 <body>
@@ -753,6 +1057,11 @@
           <div class="status-dot"></div>
           <span id="headerStatusText">Carregando...</span>
         </div>
+
+        <div class="view-tabs">
+          <button class="view-tab-btn active" id="tabLiveBtn" onclick="switchMainTab('live')">⚡ Cotas</button>
+          <button class="view-tab-btn" id="tabAnalyticsBtn" onclick="switchMainTab('analytics')">📈 Histórico</button>
+        </div>
       </div>
       <div class="window-controls">
         <button class="icon-btn" id="refreshBtn" title="Atualizar dados agora" onclick="handleRefresh()">↻</button>
@@ -763,10 +1072,108 @@
       </div>
     </header>
 
-    <!-- Main Content -->
+    <!-- Main Content: Live Quotas -->
     <main class="content" id="cardsContainer">
       <!-- Cards will be populated dynamically -->
     </main>
+
+    <!-- Analytics & History View -->
+    <section class="analytics-view" id="analyticsContainer" style="display: none;">
+      <!-- Provider Chips & Time Range Selector -->
+      <div class="analytics-chips-bar">
+        <div class="chips-group" id="analyticsChipsGroup">
+          <!-- Populated dynamically via JS -->
+        </div>
+        <div class="time-pills">
+          <button class="range-btn" data-range="1h" onclick="selectTimeRange('1h')">1h</button>
+          <button class="range-btn active" data-range="6h" onclick="selectTimeRange('6h')">6h</button>
+          <button class="range-btn" data-range="24h" onclick="selectTimeRange('24h')">24h</button>
+          <button class="range-btn" data-range="7d" onclick="selectTimeRange('7d')">7d</button>
+        </div>
+      </div>
+
+      <!-- Key Analytics Metrics Grid -->
+      <div class="analytics-stats-grid">
+        <div class="stat-card">
+          <span class="stat-title">Cota Atual</span>
+          <span class="stat-val" id="statCurPct">--%</span>
+          <span class="stat-sub" id="statStatus">Aguardando telemetria</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-title">Velocidade (Burn Rate)</span>
+          <span class="stat-val" id="statBurnRate">--%/h</span>
+          <span class="stat-sub" id="statBurnRateSub">Consumo horário</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-title">Previsão (ETA)</span>
+          <span class="stat-val" id="statEta">--</span>
+          <span class="stat-sub" id="statEtaSub">Até esgotamento</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-title">Próximo Reset</span>
+          <span class="stat-val" id="statReset">--</span>
+          <span class="stat-sub" id="statResetSub">Janela de recarga</span>
+        </div>
+      </div>
+
+      <!-- Hardware-Accelerated SVG Chart Box -->
+      <div class="chart-box">
+        <div class="chart-box-header">
+          <div class="chart-box-title">
+            <span>📉</span> <span id="chartActiveTitle">Curva de Consumo</span>
+          </div>
+          <div class="chart-status-badge" id="chartStatusBadge">
+            <span class="pulse-dot"></span>
+            <span id="chartStatusText">Coletando telemetria</span>
+          </div>
+        </div>
+
+        <div class="chart-wrapper" id="chartWrapper">
+          <svg id="historyChartSvg" class="history-chart-svg" viewBox="0 0 320 150" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            <!-- Guide Grid Lines & Percentage Axis -->
+            <line x1="28" y1="15" x2="315" y2="15" class="chart-grid-line" />
+            <text x="4" y="18" class="chart-grid-text">100%</text>
+
+            <line x1="28" y1="47" x2="315" y2="47" class="chart-grid-line" />
+            <text x="4" y="50" class="chart-grid-text">75%</text>
+
+            <line x1="28" y1="80" x2="315" y2="80" class="chart-grid-line" />
+            <text x="4" y="83" class="chart-grid-text">50%</text>
+
+            <line x1="28" y1="112" x2="315" y2="112" class="chart-grid-line" />
+            <text x="4" y="115" class="chart-grid-text">25%</text>
+
+            <line x1="28" y1="140" x2="315" y2="140" class="chart-grid-line" />
+            <text x="4" y="143" class="chart-grid-text">0%</text>
+
+            <!-- Baseline for single-point accumulation -->
+            <line id="chartBaseline" x1="28" y1="75" x2="315" y2="75" class="chart-baseline" style="display: none;" />
+
+            <!-- Curve and Fill -->
+            <path id="chartAreaPath" class="chart-area" d="" />
+            <path id="chartLinePath" class="chart-line" d="" />
+
+            <!-- Interactive Crosshair & Cursor -->
+            <line id="chartHairline" x1="0" y1="15" x2="0" y2="140" class="chart-hairline" style="display: none;" />
+            <circle id="chartCursor" cx="0" cy="0" r="4.5" class="chart-cursor" style="display: none;" />
+          </svg>
+
+          <!-- Floating Tooltip -->
+          <div class="chart-tooltip" id="chartTooltip" style="display: none;">
+            <div class="tooltip-time" id="ttTime">--:--</div>
+            <div class="tooltip-pct" id="ttPct">--%</div>
+            <div class="tooltip-detail" id="ttDetail">--</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Footer with status & resize grip -->
     <footer class="footer">
@@ -1239,6 +1646,352 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       });
     }
 
+    // ==========================================
+    // Analytics & History Chart Engine
+    // ==========================================
+    let currentMainTab = 'live';
+    let activeHistoryProvider = 'agy';
+    let activeHistoryMetric = 'gemini_5h';
+    let activeHistoryRange = '6h';
+    let currentHistoryData = null;
+    let chartScrubberActive = false;
+
+    const CHIP_DEFS = [
+      { id: 'agy_5h', provider: 'agy', metric: 'gemini_5h', label: 'Antigravity 5h', color: '#38bdf8' },
+      { id: 'claude1_5h', provider: 'claude1', metric: 'five_hour', label: 'Claude #1 5h', color: '#34d399' },
+      { id: 'claude2_5h', provider: 'claude2', metric: 'five_hour', label: 'Claude #2 5h', color: '#34d399' },
+      { id: 'codex_5h', provider: 'codex', metric: 'five_hour', label: 'Codex 5h', color: '#c084fc' }
+    ];
+
+    function switchMainTab(tab) {
+      currentMainTab = tab;
+      const cardsContainer = document.getElementById("cardsContainer");
+      const analyticsContainer = document.getElementById("analyticsContainer");
+      const tabLiveBtn = document.getElementById("tabLiveBtn");
+      const tabAnalyticsBtn = document.getElementById("tabAnalyticsBtn");
+
+      if (tab === 'live') {
+        if (cardsContainer) cardsContainer.style.display = "flex";
+        if (analyticsContainer) analyticsContainer.style.display = "none";
+        if (tabLiveBtn) tabLiveBtn.classList.add("active");
+        if (tabAnalyticsBtn) tabAnalyticsBtn.classList.remove("active");
+        renderCards();
+      } else {
+        if (cardsContainer) cardsContainer.style.display = "none";
+        if (analyticsContainer) analyticsContainer.style.display = "flex";
+        if (tabLiveBtn) tabLiveBtn.classList.remove("active");
+        if (tabAnalyticsBtn) tabAnalyticsBtn.classList.add("active");
+        renderAnalyticsChips();
+        fetchAndRenderHistory();
+      }
+    }
+
+    function renderAnalyticsChips() {
+      const group = document.getElementById("analyticsChipsGroup");
+      if (!group) return;
+      group.innerHTML = "";
+
+      CHIP_DEFS.forEach(chip => {
+        const btn = document.createElement("button");
+        btn.className = "chip-btn" + (chip.provider === activeHistoryProvider && chip.metric === activeHistoryMetric ? " active" : "");
+        btn.innerHTML = `<span class="chip-dot" style="color: ${chip.color}"></span> ${chip.label}`;
+        btn.onclick = () => selectHistoryChip(chip);
+        group.appendChild(btn);
+      });
+    }
+
+    function selectHistoryChip(chip) {
+      activeHistoryProvider = chip.provider;
+      activeHistoryMetric = chip.metric;
+      renderAnalyticsChips();
+
+      // Update active title
+      const titleEl = document.getElementById("chartActiveTitle");
+      if (titleEl) {
+        titleEl.innerHTML = `<span style="color: ${chip.color}">●</span> ${chip.label}`;
+      }
+
+      // Update SVG gradient colors
+      updateChartGradient(chip.color);
+      fetchAndRenderHistory();
+    }
+
+    function updateChartGradient(colorHex) {
+      const grad = document.getElementById("chartAreaGradient");
+      if (grad) {
+        grad.innerHTML = `
+          <stop offset="0%" stop-color="${colorHex}" stop-opacity="0.45" />
+          <stop offset="100%" stop-color="${colorHex}" stop-opacity="0.0" />
+        `;
+      }
+      const line = document.getElementById("chartLinePath");
+      if (line) {
+        line.setAttribute("stroke", colorHex);
+        line.style.filter = `drop-shadow(0 0 6px ${colorHex}99)`;
+      }
+      const cur = document.getElementById("chartCursor");
+      if (cur) {
+        cur.setAttribute("fill", colorHex);
+      }
+    }
+
+    function selectTimeRange(rangeKey) {
+      activeHistoryRange = rangeKey;
+      document.querySelectorAll(".time-pills .range-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.range === rangeKey);
+      });
+      fetchAndRenderHistory();
+    }
+
+    async function fetchAndRenderHistory() {
+      if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.get_history) {
+        return;
+      }
+      try {
+        const data = await window.pywebview.api.get_history(activeHistoryProvider, activeHistoryMetric, activeHistoryRange);
+        if (data) {
+          currentHistoryData = data;
+          renderHistoryChart(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch history:", err);
+      }
+    }
+
+    let activeChartPoints = [];
+
+    function renderHistoryChart(data) {
+      const linePath = document.getElementById("chartLinePath");
+      const areaPath = document.getElementById("chartAreaPath");
+      const baseline = document.getElementById("chartBaseline");
+      const statusText = document.getElementById("chartStatusText");
+      const statCurPct = document.getElementById("statCurPct");
+      const statStatus = document.getElementById("statStatus");
+      const statBurnRate = document.getElementById("statBurnRate");
+      const statBurnRateSub = document.getElementById("statBurnRateSub");
+      const statEta = document.getElementById("statEta");
+      const statEtaSub = document.getElementById("statEtaSub");
+      const statReset = document.getElementById("statReset");
+
+      if (!linePath || !areaPath) return;
+
+      const points = data.points || [];
+      const totalPoints = data.total_points || points.length;
+
+      // Update Current Quota Stat
+      if (data.current_pct !== null && data.current_pct !== undefined) {
+        statCurPct.innerText = `${data.current_pct}%`;
+        statCurPct.style.color = getHealthColor(data.current_pct);
+        statStatus.innerText = "Monitoramento ativo";
+      } else {
+        statCurPct.innerText = "--%";
+        statCurPct.style.color = "var(--text-main)";
+        statStatus.innerText = "Aguardando telemetria";
+      }
+
+      // Update Burn Rate Stat
+      if (data.burn_rate_pct_hr > 0) {
+        statBurnRate.innerText = `${data.burn_rate_pct_hr.toFixed(1)}%/h`;
+        statBurnRate.style.color = "#f87171";
+        statBurnRateSub.innerText = "Consumo ativo estimado";
+      } else {
+        statBurnRate.innerText = "0.0%/h";
+        statBurnRate.style.color = "#34d399";
+        statBurnRateSub.innerText = "Cota estável / em repouso";
+      }
+
+      // Update ETA Stat
+      if (data.eta_seconds !== null && data.eta_seconds !== undefined) {
+        const hrs = Math.floor(data.eta_seconds / 3600);
+        const mins = Math.floor((data.eta_seconds % 3600) / 60);
+        statEta.innerText = hrs > 0 ? `~${hrs}h ${mins}m` : `~${mins}m`;
+        statEta.style.color = data.eta_seconds < 7200 ? "#f87171" : "#fbbf24";
+        statEtaSub.innerText = "Até esgotamento provável";
+      } else if (data.burn_rate_pct_hr === 0) {
+        statEta.innerText = "Seguro";
+        statEta.style.color = "#34d399";
+        statEtaSub.innerText = "Sem risco iminente";
+      } else {
+        statEta.innerText = "--";
+        statEta.style.color = "var(--text-main)";
+        statEtaSub.innerText = "Acumulando amostragem";
+      }
+
+      // Update Reset Countdown Stat
+      if (points.length > 0 && points[points.length - 1].reset_at) {
+        const cd = formatCountdown(points[points.length - 1].reset_at);
+        statReset.innerText = cd || "Disponível";
+      } else {
+        statReset.innerText = "--";
+      }
+
+      // Viewbox bounds: 320 x 150
+      const left = 28;
+      const right = 315;
+      const top = 15;
+      const bottom = 140;
+      const width = right - left;
+      const height = bottom - top;
+
+      activeChartPoints = [];
+
+      // Case 0: No points yet
+      if (points.length === 0) {
+        linePath.setAttribute("d", "");
+        areaPath.setAttribute("d", "");
+        if (baseline) {
+          baseline.setAttribute("y1", "75");
+          baseline.setAttribute("y2", "75");
+          baseline.style.display = "block";
+        }
+        if (statusText) statusText.innerText = "Aguardando primeiro snapshot";
+        return;
+      }
+
+      // Case 1: Exactly 1 point (Graceful accumulation baseline)
+      if (points.length === 1) {
+        const p = points[0];
+        const pct = Math.max(0, Math.min(100, p.pct !== null ? p.pct : 100));
+        const y = bottom - (pct / 100.0) * height;
+
+        if (baseline) {
+          baseline.setAttribute("y1", y.toFixed(1));
+          baseline.setAttribute("y2", y.toFixed(1));
+          baseline.style.display = "block";
+        }
+
+        // Draw a subtle horizontal line segment
+        const dLine = `M ${left} ${y.toFixed(1)} L ${right} ${y.toFixed(1)}`;
+        const dArea = `M ${left} ${y.toFixed(1)} L ${right} ${y.toFixed(1)} L ${right} ${bottom} L ${left} ${bottom} Z`;
+        linePath.setAttribute("d", dLine);
+        areaPath.setAttribute("d", dArea);
+
+        activeChartPoints = [
+          { x: (left + right) / 2, y: y, raw: p }
+        ];
+
+        if (statusText) statusText.innerText = `Coletando telemetria: 1 ponto registrado`;
+        return;
+      }
+
+      // Case 2: 2 or more points
+      if (baseline) baseline.style.display = "none";
+      if (statusText) statusText.innerText = `Histórico ativo: ${totalPoints} registros`;
+
+      const tMin = points[0].t;
+      const tMax = points[points.length - 1].t;
+      const tSpan = Math.max(1, tMax - tMin);
+
+      const screenPts = points.map(p => {
+        const normX = (p.t - tMin) / tSpan;
+        const x = left + normX * width;
+        const pct = Math.max(0, Math.min(100, p.pct !== null ? p.pct : 0));
+        const y = bottom - (pct / 100.0) * height;
+        return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)), raw: p };
+      });
+
+      activeChartPoints = screenPts;
+
+      // Build smooth path
+      let dLine = `M ${screenPts[0].x} ${screenPts[0].y}`;
+      for (let i = 1; i < screenPts.length; i++) {
+        dLine += ` L ${screenPts[i].x} ${screenPts[i].y}`;
+      }
+
+      const dArea = `${dLine} L ${screenPts[screenPts.length - 1].x} ${bottom} L ${screenPts[0].x} ${bottom} Z`;
+
+      linePath.setAttribute("d", dLine);
+      areaPath.setAttribute("d", dArea);
+    }
+
+    function initChartScrubber() {
+      const wrapper = document.getElementById("chartWrapper");
+      const hairline = document.getElementById("chartHairline");
+      const cursor = document.getElementById("chartCursor");
+      const tooltip = document.getElementById("chartTooltip");
+      const ttTime = document.getElementById("ttTime");
+      const ttPct = document.getElementById("ttPct");
+      const ttDetail = document.getElementById("ttDetail");
+
+      if (!wrapper || !hairline || !cursor || !tooltip) return;
+
+      const handleMove = (e) => {
+        if (!activeChartPoints || activeChartPoints.length === 0) return;
+
+        const rect = wrapper.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+        if (clientX === null) return;
+
+        const relX = clientX - rect.left;
+        const svgX = (relX / rect.width) * 320;
+
+        // Find closest point
+        let closest = activeChartPoints[0];
+        let minDiff = Math.abs(svgX - closest.x);
+        for (let i = 1; i < activeChartPoints.length; i++) {
+          const diff = Math.abs(svgX - activeChartPoints[i].x);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closest = activeChartPoints[i];
+          }
+        }
+
+        // Show hairline & cursor
+        hairline.setAttribute("x1", closest.x);
+        hairline.setAttribute("x2", closest.x);
+        hairline.style.display = "block";
+
+        cursor.setAttribute("cx", closest.x);
+        cursor.setAttribute("cy", closest.y);
+        cursor.style.display = "block";
+
+        // Position and update Tooltip
+        const d = new Date(closest.raw.t * 1000);
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        ttTime.innerText = `${timeStr} (${d.toLocaleDateString([], { month: 'short', day: 'numeric' })})`;
+        ttPct.innerText = closest.raw.pct !== null ? `${closest.raw.pct}% Cota` : "--%";
+        ttPct.style.color = getHealthColor(closest.raw.pct);
+        ttDetail.innerText = closest.raw.detail || (closest.raw.status === "ok" ? "Status Normal" : closest.raw.status);
+
+        const screenX = (closest.x / 320) * rect.width;
+        const screenY = (closest.y / 150) * rect.height;
+
+        tooltip.style.left = `${screenX}px`;
+        tooltip.style.top = `${screenY}px`;
+        tooltip.style.display = "block";
+      };
+
+      const handleLeave = () => {
+        hairline.style.display = "none";
+        cursor.style.display = "none";
+        tooltip.style.display = "none";
+      };
+
+      wrapper.addEventListener("mousemove", handleMove);
+      wrapper.addEventListener("mouseleave", handleLeave);
+      wrapper.addEventListener("touchmove", handleMove, { passive: true });
+      wrapper.addEventListener("touchend", handleLeave);
+    }
+
+    // Live update function pushed from Python backend
+    window.updateHUD = function(snapshots) {
+      if (!snapshots) return;
+      currentSnapshots = snapshots;
+      const statusText = document.getElementById("headerStatusText");
+      if (statusText) statusText.innerText = "Atualizado";
+
+      if (currentMode === "avatar") {
+        renderAvatar();
+      } else {
+        if (currentMainTab === "live") {
+          renderCards();
+        } else {
+          // If viewing analytics, refresh stats and points smoothly
+          fetchAndRenderHistory();
+        }
+      }
+    };
+
     // Initialization hook from pywebview
     window.addEventListener("pywebviewready", async function() {
       try {
@@ -1254,20 +2007,15 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         console.error("Init error:", err);
       }
 
-      // Smooth background polling every 3 seconds from JS (never deadlocks)
+      initChartScrubber();
+
+      // Smooth background polling every 3 seconds from JS as a fallback
       setInterval(async () => {
         try {
           if (window.pywebview && window.pywebview.api) {
             const snaps = await window.pywebview.api.get_snapshots();
             if (snaps && Object.keys(snaps).length > 0) {
-              currentSnapshots = snaps;
-              if (currentMode === "panel") {
-                renderCards();
-              } else {
-                renderAvatar();
-              }
-              const st = document.getElementById("headerStatusText");
-              if (st) st.innerText = "Atualizado";
+              window.updateHUD(snaps);
             }
           }
         } catch (e) {
@@ -1281,7 +2029,11 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       if (mode !== currentMode) {
         applyMode(mode);
       } else if (mode === "panel") {
-        renderCards();
+        if (currentMainTab === "live") {
+          renderCards();
+        } else {
+          if (currentHistoryData) renderHistoryChart(currentHistoryData);
+        }
       } else {
         renderAvatar();
       }

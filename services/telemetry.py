@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Any, Callable, Sequence
 
+from history import HistoryStore
 from providers.antigravity import AntigravityProvider
 from providers.base import BaseProvider
 from providers.claude import ClaudeProvider
@@ -54,11 +55,13 @@ class TelemetryService:
         self,
         providers: Sequence[BaseProvider] | None = None,
         profile_service: ProfileService | None = None,
+        history_store: HistoryStore | None = None,
         refresh_interval: float = 3.0,
         agy_poll_interval: float = 120.0,
         anti_flicker_seconds: float = DEFAULT_ANTI_FLICKER_SECONDS,
     ):
         self.profile_service = profile_service or ProfileService()
+        self.history_store = history_store
         self.anti_flicker_seconds = anti_flicker_seconds
         self.refresh_interval = max(1.0, float(refresh_interval))
         self.agy_poll_interval = max(10.0, float(agy_poll_interval))
@@ -130,6 +133,12 @@ class TelemetryService:
 
             self._latest_serialized = dict(results)
             listeners = list(self._listeners)
+
+        if self.history_store is not None:
+            try:
+                self.history_store.record_serialized_snapshots(results)
+            except Exception:
+                pass
 
         for listener in listeners:
             try:

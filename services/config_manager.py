@@ -101,6 +101,35 @@ def resolve_config_path(explicit_path: Path | str | None = None) -> Path:
     return primary
 
 
+def resolve_history_db_path(explicit_path: Path | str | None = None) -> Path:
+    """Resolve the SQLite history database path using hybrid portable / AppData strategy."""
+    if explicit_path is not None:
+        return Path(explicit_path)
+
+    # 1. Portable history DB
+    portable = get_portable_dir() / "history.sqlite"
+    if portable.exists():
+        return portable
+
+    # 2. TokenWatch AppData
+    app_data = get_app_data_dir()
+    primary = app_data / "history.sqlite"
+    if primary.exists():
+        return primary
+
+    # 3. Check legacy MonitorCotas history DB
+    legacy = get_legacy_app_data_dir() / "history.sqlite"
+    if legacy.exists():
+        try:
+            app_data.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy, primary)
+            return primary
+        except OSError:
+            return legacy
+
+    return primary
+
+
 def _int_or(value: Any, fallback: int | None, *, minimum: int | None = None) -> int | None:
     if isinstance(value, bool):
         return fallback

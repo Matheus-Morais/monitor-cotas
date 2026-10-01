@@ -17,9 +17,11 @@ from typing import Any
 import keyboard
 import webview
 
+from history import HistoryStore
 from services.config_manager import (
     DEFAULT_VISIBLE_METRICS,
     ConfigManager,
+    resolve_history_db_path,
 )
 from services.profiles import ProfileService
 from services.telemetry import TelemetryService
@@ -111,6 +113,26 @@ class QuotaAPI:
         """Resize panel manually from JS drag grips."""
         return self._app.manual_resize(width, height, x, y)
 
+    def get_history(self, provider: str, metric: str, range_key: str = "6h") -> dict[str, Any]:
+        """Return time-series history, burn rate, and ETA for a specific provider & metric."""
+        range_map = {
+            "1h": 3600.0,
+            "6h": 21600.0,
+            "24h": 86400.0,
+            "7d": 604800.0,
+        }
+        range_seconds = range_map.get(str(range_key).lower(), 21600.0)
+        return self._app.history_store.query_history(
+            provider=provider,
+            metric=metric,
+            range_seconds=range_seconds,
+            max_points=120,
+        )
+
+    def get_history_providers(self) -> list[dict[str, str]]:
+        """Return available provider and metric pairs recorded in history."""
+        return self._app.history_store.get_available_metrics()
+
     def close(self) -> None:
         """Close the application cleanly."""
         self._app.close()
@@ -119,14 +141,23 @@ class QuotaAPI:
 class QuotaWebViewApp:
     """Main desktop application controller."""
 
-    def __init__(self, config_path: Path | str | None = None):
+    def __init__(self, config_path: Path | str | None = None, history_db_path: Path | str | None = None):
         self.config_manager = ConfigManager(config_path)
         self.profile_service = ProfileService()
+        self.history_store = HistoryStore(resolve_history_db_path(history_db_path))
         self.telemetry_service = TelemetryService(
             profile_service=self.profile_service,
+            history_store=self.history_store,
             refresh_interval=self.config_manager.get("refresh_seconds", 3.0),
             agy_poll_interval=self.config_manager.get("agy_poll_seconds", 120.0),
         )
+
+        # Background prune of old snapshots (7-day retention)
+        threading.Thread(
+            target=lambda: self.history_store.prune(retention_days=7),
+            daemon=True,
+            name="history-pruner",
+        ).start()
 
         self.window = None
         self.is_pinned = True

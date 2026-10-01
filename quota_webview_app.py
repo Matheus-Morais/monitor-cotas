@@ -415,6 +415,9 @@ class QuotaWebViewApp:
             from PIL import Image, ImageDraw
 
             def make_tray_icon():
+                icon_file = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "icon" / "tokenwatch.png"
+                if icon_file.exists():
+                    return Image.open(icon_file).convert("RGBA").resize((64, 64), Image.LANCZOS)
                 img = Image.new("RGBA", (64, 64), (17, 17, 27, 255))
                 draw = ImageDraw.Draw(img)
                 draw.ellipse((4, 4, 60, 60), fill=(24, 24, 37, 255), outline="#45475a", width=2)

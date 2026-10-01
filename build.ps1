@@ -17,7 +17,7 @@ if ($InstallDependencies) {
     python -m pip install -r requirements.txt
 }
 
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name TokenWatch --distpath $distTarget --add-data "ui;ui" quota_webview_app.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name TokenWatch --distpath $distTarget --icon "assets\icon\tokenwatch.ico" --add-data "ui;ui" --add-data "assets\icon;assets\icon" quota_webview_app.py
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller falhou com código $LASTEXITCODE."
 }

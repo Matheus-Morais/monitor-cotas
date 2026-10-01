@@ -514,6 +514,53 @@
       min-width: 160px;
       text-align: left;
     }
+    /* Bars style: one row per metric (label | bar | % | reset). Narrow windows stack the bar under the numbers. */
+    .metrics-container.metrics-bars {
+      flex-direction: column;
+      align-items: stretch;
+      flex-wrap: nowrap;
+      gap: 6px;
+    }
+    .metric-bar {
+      position: relative;
+      display: grid;
+      grid-template-columns: 26px minmax(48px, 1fr) 40px 66px;
+      grid-template-areas: "l b p t";
+      align-items: center;
+      column-gap: 8px;
+    }
+    .metric-bar .bar-label { grid-area: l; font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+    .metric-bar .bar-track { grid-area: b; height: 8px; border-radius: 999px; background: var(--bg-bar); overflow: hidden; }
+    .metric-bar .bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+    .metric-bar .bar-pct { grid-area: p; font-size: 11px; font-weight: 800; text-align: right; }
+    .metric-bar .bar-reset { grid-area: t; font-size: 9px; font-weight: 600; color: var(--color-cyan); text-align: right; white-space: nowrap; }
+    @media (max-width: 300px) {
+      .metric-bar {
+        grid-template-columns: 26px 1fr auto;
+        grid-template-areas: "l p t" "b b b";
+        row-gap: 3px;
+      }
+      .metric-bar .bar-pct { text-align: left; }
+    }
+
+    /* Compact text style: numbers only, wraps by whole metric */
+    .metrics-container.metrics-text {
+      justify-content: flex-start;
+      gap: 4px 16px;
+    }
+    .metric-text {
+      position: relative;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .metric-text .mt-label { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+    .metric-text .mt-pct { font-size: 12px; font-weight: 800; }
+    .metric-text .mt-reset { font-size: 9px; font-weight: 600; color: var(--color-cyan); }
+
+    .metric-bar:hover .custom-tooltip,
+    .metric-text:hover .custom-tooltip,
     .metric-tile:hover .custom-tooltip {
       opacity: 1;
       visibility: visible;
@@ -1317,7 +1364,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title">
-          <span>⚙</span> Personalizar Rodas de Cotas
+          <span>⚙</span> Personalizar
         </div>
         <button class="icon-btn" onclick="closeConfigModal()">✕</button>
       </div>
@@ -1414,7 +1461,11 @@
         const acts = card.querySelector(".card-actions");
         const need = [(head ? head.offsetWidth : 0) + (acts ? acts.offsetWidth : 0) + 12];
         const metrics = card.querySelector(".metrics-container");
-        if (metrics && metrics.children.length) {
+        if (metrics && metrics.classList.contains("metrics-bars")) {
+          need.push(250);
+        } else if (metrics && metrics.classList.contains("metrics-text")) {
+          need.push(Math.max(0, ...Array.from(metrics.children).map(t => t.offsetWidth)));
+        } else if (metrics && metrics.children.length) {
           const gap = px(getComputedStyle(metrics).columnGap);
           need.push(Array.from(metrics.children).reduce((s, t) => s + t.offsetWidth, 0) + gap * (metrics.children.length - 1));
         }
@@ -1461,6 +1512,17 @@
       renderModalOptions();
       if (window.pywebview) {
         window.pywebview.api.set_option(key, value).then(cfg => {
+          currentConfig = cfg;
+        });
+      }
+    }
+
+    function setMetricsStyle(style) {
+      currentConfig.metrics_style = style;
+      renderCards();
+      renderModalOptions();
+      if (window.pywebview) {
+        window.pywebview.api.set_metrics_style(style).then(cfg => {
           currentConfig = cfg;
         });
       }
@@ -1587,11 +1649,16 @@
         // Body
         if (!isCollapsed) {
           const body = document.createElement("div");
-          body.className = "metrics-container";
+          const style = currentConfig.metrics_style || "rings";
+          body.className = "metrics-container" + (style === "rings" ? "" : " metrics-" + style);
           body.style.justifyContent = {left: "flex-start", center: "center", right: "flex-end"}[currentConfig.metrics_align] || "space-evenly";
           
           const windowWidth = isFitWidth() ? 1000 : (document.body.clientWidth || window.innerWidth);
-          if (isFitWidth()) {
+          if (style === "bars") {
+            body.style.justifyContent = "";  // bars fill the whole row, so alignment does not apply
+          } else if (style === "text") {
+            // keep the CSS gap for the compact text; only the alignment comes from the settings
+          } else if (isFitWidth()) {
             body.style.gap = numMetrics <= 2 ? "24px" : (numMetrics === 3 ? "16px" : "12px");
           } else if (windowWidth < 340) {
             body.style.gap = numMetrics <= 2 ? "14px" : (numMetrics === 3 ? "8px" : "5px");
@@ -1602,13 +1669,43 @@
           }
 
           if (numMetrics === 0) {
-            body.innerHTML = `<div class="empty-metrics-msg" onclick="openConfigModal()">Nenhuma roda ativa (clique para escolher)</div>`;
+            body.innerHTML = `<div class="empty-metrics-msg" onclick="openConfigModal()">Nenhuma métrica ativa (clique para escolher)</div>`;
           } else {
             for (const def of activeDefs) {
               const metric = snapshot.metrics ? snapshot.metrics[def.key] : null;
               const pct = metric ? metric.remaining_pct : null;
               const color = getHealthColor(pct);
               const resetHint = metric ? formatCountdown(metric.reset_at) : "";
+              const tooltipHtml = `<div class="custom-tooltip">${def.full}
+Disponível: ${pct !== null && pct !== undefined ? pct + '%' : 'N/D'}
+Redefinição: ${resetHint || 'sem dados'}
+${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>`;
+              const hasPct = pct !== null && pct !== undefined;
+
+              if (style === "bars") {
+                const row = document.createElement("div");
+                row.className = "metric-bar";
+                row.innerHTML = `
+                  <span class="bar-label">${def.label}</span>
+                  <div class="bar-track"><div class="bar-fill" style="width: ${hasPct ? pct : 0}%; background: ${color};"></div></div>
+                  <span class="bar-pct" style="color: ${color};">${hasPct ? pct + '%' : 'N/D'}</span>
+                  <span class="bar-reset">${resetHint ? '⏱ ' + resetHint : ''}</span>
+                  ${tooltipHtml}`;
+                body.appendChild(row);
+                continue;
+              }
+              if (style === "text") {
+                const chip = document.createElement("div");
+                chip.className = "metric-text";
+                chip.innerHTML = `
+                  <span class="mt-label">${def.label}</span>
+                  <span class="mt-pct" style="color: ${color};">${hasPct ? pct + '%' : 'N/D'}</span>
+                  <span class="mt-reset">${resetHint ? '⏱ ' + resetHint : ''}</span>
+                  ${tooltipHtml}`;
+                body.appendChild(chip);
+                continue;
+              }
+
               const circumference = 2 * Math.PI * ringParams.radius;
               const offset = pct !== null && pct !== undefined 
                 ? circumference - (pct / 100) * circumference 
@@ -1662,6 +1759,20 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       container.innerHTML = "";
 
       const mode = currentConfig.provider_label_mode || "both";
+      const style = currentConfig.metrics_style || "rings";
+      const styleSec = document.createElement("div");
+      styleSec.className = "modal-provider-sec";
+      const styleBtn = (value, text) =>
+        `<button class="label-mode-btn ${style === value ? 'active' : ''}" onclick="setMetricsStyle('${value}')">${text}</button>`;
+      styleSec.innerHTML = `
+        <div class="modal-provider-title"><span>Estilo das métricas</span></div>
+        <div class="label-mode-group">
+          ${styleBtn('rings', 'Rodas')}
+          ${styleBtn('bars', 'Barras')}
+          ${styleBtn('text', 'Texto compacto')}
+        </div>`;
+      container.appendChild(styleSec);
+
       const modeSec = document.createElement("div");
       modeSec.className = "modal-provider-sec";
       const modeBtn = (value, text) =>
@@ -1676,13 +1787,14 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
           ${modeBtn('logo', 'Só logo')}
           ${modeBtn('name', 'Só nome')}
         </div>
-        <div class="modal-provider-title" style="margin-top: 12px;"><span>Alinhamento das rodas</span></div>
+        ${style !== "bars" ? `
+        <div class="modal-provider-title" style="margin-top: 12px;"><span>Alinhamento ${style === "text" ? "do texto" : "das rodas"}</span></div>
         <div class="label-mode-group">
           ${alignBtn('spread', 'Distribuir')}
           ${alignBtn('left', 'Esquerda')}
           ${alignBtn('center', 'Centro')}
           ${alignBtn('right', 'Direita')}
-        </div>
+        </div>` : ""}
       `;
       container.appendChild(modeSec);
 
@@ -2364,7 +2476,22 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       }, 3000);
     });
 
+    // Which edge the user is dragging (the native resize loop swallows mouse events, so we watch "resize" instead)
+    let userResizeDir = null;
+    let userResizeTimer = null;
+
+    function noteUserResize() {
+      if (!userResizeDir) return;
+      const horizontal = userResizeDir.indexOf("left") !== -1 || userResizeDir.indexOf("right") !== -1;
+      const vertical = userResizeDir.indexOf("top") !== -1 || userResizeDir.indexOf("bottom") !== -1;
+      if (horizontal && currentConfig.auto_width !== false) setOption("auto_width", false);
+      if (vertical && currentConfig.auto_height !== false) setOption("auto_height", false);
+      clearTimeout(userResizeTimer);
+      userResizeTimer = setTimeout(() => { userResizeDir = null; }, 800);
+    }
+
     window.addEventListener("resize", () => {
+      noteUserResize();
       if (currentMode === "panel") {
         if (currentMainTab === "live") {
           renderCards();
@@ -2383,6 +2510,9 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         const dir = el.dataset.dir || 'bottomright';
         el.addEventListener('mousedown', (e) => {
           if (e.button !== 0) return;
+          userResizeDir = dir;
+          clearTimeout(userResizeTimer);
+          userResizeTimer = setTimeout(() => { userResizeDir = null; }, 4000);
           // Trigger native Windows resize loop
           if (window.pywebview && window.pywebview.api && window.pywebview.api.start_resize) {
             window.pywebview.api.start_resize(dir);

@@ -24,6 +24,7 @@ DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
 
 PROVIDER_LABEL_MODES = ("both", "logo", "name")
 METRICS_ALIGN_MODES = ("spread", "left", "center", "right")
+METRICS_STYLES = ("rings", "bars", "text")
 BOOL_OPTIONS = ("show_plan", "show_account_email", "auto_height", "auto_width")
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -35,6 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compact_mode": False,
     "provider_label_mode": "both",
     "metrics_align": "spread",
+    "metrics_style": "rings",
     "show_plan": True,
     "show_account_email": False,
     "auto_height": True,
@@ -172,6 +174,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "compact_mode": DEFAULT_CONFIG["compact_mode"],
         "provider_label_mode": DEFAULT_CONFIG["provider_label_mode"],
         "metrics_align": DEFAULT_CONFIG["metrics_align"],
+        "metrics_style": DEFAULT_CONFIG["metrics_style"],
         "show_plan": DEFAULT_CONFIG["show_plan"],
         "show_account_email": DEFAULT_CONFIG["show_account_email"],
         "auto_height": DEFAULT_CONFIG["auto_height"],
@@ -227,6 +230,9 @@ def normalize_config(raw: Any) -> dict[str, Any]:
 
     if raw.get("metrics_align") in METRICS_ALIGN_MODES:
         config["metrics_align"] = raw["metrics_align"]
+
+    if raw.get("metrics_style") in METRICS_STYLES:
+        config["metrics_style"] = raw["metrics_style"]
 
     for flag in BOOL_OPTIONS:
         config[flag] = bool(raw.get(flag, config[flag]))

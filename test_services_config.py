@@ -44,6 +44,12 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(normalize_config({"metrics_align": "spread"})["metrics_align"], "spread")
         self.assertEqual(normalize_config({"metrics_align": "top"})["metrics_align"], "spread")
 
+    def test_metrics_style(self):
+        self.assertEqual(normalize_config({})["metrics_style"], "rings")
+        for style in ("rings", "bars", "text"):
+            self.assertEqual(normalize_config({"metrics_style": style})["metrics_style"], style)
+        self.assertEqual(normalize_config({"metrics_style": "pie"})["metrics_style"], "rings")
+
     def test_card_info_options(self):
         cfg = normalize_config({})
         self.assertTrue(cfg["show_plan"])

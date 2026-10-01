@@ -23,6 +23,7 @@ from services.config_manager import (
     DEFAULT_VISIBLE_METRICS,
     BOOL_OPTIONS,
     METRICS_ALIGN_MODES,
+    METRICS_STYLES,
     PROVIDER_LABEL_MODES,
     ConfigManager,
     resolve_history_db_path,
@@ -81,6 +82,12 @@ class QuotaAPI:
         """Choose the horizontal alignment of the rings: 'left', 'center' or 'right'."""
         if align in METRICS_ALIGN_MODES:
             self._app.config_manager.set("metrics_align", align)
+        return self._app.config_manager.data
+
+    def set_metrics_style(self, style: str) -> dict[str, Any]:
+        """Choose how metrics are drawn: 'rings', 'bars' or 'text'."""
+        if style in METRICS_STYLES:
+            self._app.config_manager.set("metrics_style", style)
         return self._app.config_manager.data
 
     def set_option(self, key: str, value: bool) -> dict[str, Any]:

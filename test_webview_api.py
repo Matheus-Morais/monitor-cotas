@@ -78,6 +78,11 @@ class TestQuotaAPI(unittest.TestCase):
         cfg = self.api.set_option("ui_mode", True)  # not a bool option: ignored
         self.assertEqual(cfg["ui_mode"], "panel")
 
+    def test_set_metrics_style(self):
+        self.assertEqual(self.api.set_metrics_style("bars")["metrics_style"], "bars")
+        self.assertEqual(self.api.set_metrics_style("pie")["metrics_style"], "bars")  # invalid: ignored
+        self.assertEqual(self.api.set_metrics_style("text")["metrics_style"], "text")
+
     def test_fit_size_delegates(self):
         self.assertEqual(self.api.fit_size(-30, -40), {"dw": -30, "dh": -40})
         self.assertFalse(self.api.set_option("auto_width", False)["auto_width"])

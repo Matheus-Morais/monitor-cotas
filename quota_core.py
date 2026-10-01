@@ -163,6 +163,20 @@ def load_agy_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
     )
 
 
+def _claude_plan_label(oauth_account: dict) -> str:
+    """Human-readable Claude plan (Pro, Max 5x, Team...) from the saved oauthAccount."""
+    org_type = str(oauth_account.get("organizationType") or "").lower()
+    if not org_type:
+        return ""
+    name = org_type.removeprefix("claude_").replace("_", " ").title()
+    if org_type == "claude_max":
+        tier = str(oauth_account.get("userRateLimitTier") or "").lower()
+        for mult in ("20x", "5x"):
+            if tier.endswith(mult):
+                return f"{name} {mult}"
+    return name
+
+
 def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
     data, source_status, age = _read_json(path)
     if data is None:
@@ -172,6 +186,7 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
     model_name = model.get("display_name", "") if isinstance(model, dict) else ""
     account = data.get("oauthAccount", {})
     account_is_dict = isinstance(account, dict)
+    plan = _claude_plan_label(account if account_is_dict else {})
     email = account.get("emailAddress", "") if account_is_dict else ""
     account_uuid = account.get("accountUuid", "") if account_is_dict else ""
     organization_uuid = account.get("organizationUuid", "") if account_is_dict else ""
@@ -208,6 +223,7 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
             "claude",
             UNAVAILABLE,
             model=str(model_name or ""),
+            plan=plan,
             account=str(email or ""),
             source_age_seconds=age,
             metadata=metadata,
@@ -220,6 +236,7 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
         _snapshot_status(metrics, source_status),
         metrics,
         model=str(model_name or ""),
+        plan=plan,
         account=str(email or ""),
         source_age_seconds=age,
         metadata=metadata,

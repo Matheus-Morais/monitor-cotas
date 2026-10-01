@@ -96,6 +96,23 @@ class QuotaCoreTests(unittest.TestCase):
         self.assertEqual(snapshot.metrics["seven_day"].remaining_pct, 69)
         self.assertIsNone(snapshot.metrics["context"].remaining_pct)
 
+    def test_claude_plan_from_organization_type(self):
+        for org, tier, expected in [
+            ("claude_pro", None, "Pro"),
+            ("claude_team", "default_raven", "Team"),
+            ("claude_max", "default_claude_max_5x", "Max 5x"),
+            ("claude_max", "default_claude_max_20x", "Max 20x"),
+            ("claude_max", None, "Max"),
+        ]:
+            path = self.write_json("claude-plan.json", {
+                "oauthAccount": {
+                    "emailAddress": "u@example.com",
+                    "organizationType": org,
+                    "userRateLimitTier": tier,
+                },
+            })
+            self.assertEqual(quota_core.load_claude_snapshot(path).plan, expected)
+
     def test_claude_profile_without_usage_keeps_identity(self):
         path = self.write_json("claude-no-cache.json", {
             "oauthAccount": {

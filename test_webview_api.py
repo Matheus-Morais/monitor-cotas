@@ -65,6 +65,8 @@ class TestQuotaAPI(unittest.TestCase):
         res = self.api.init()
         self.assertIn("snapshots", res)
         self.assertIn("config", res)
+        self.assertIn("mode", res)
+        self.assertEqual(res["mode"], "panel")
         self.assertIn("agy", res["snapshots"])
 
     def test_get_snapshots(self):

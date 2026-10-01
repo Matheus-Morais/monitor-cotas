@@ -44,6 +44,7 @@ class QuotaAPI:
         return {
             "snapshots": self._app.telemetry_service.get_latest(),
             "config": self._app.config_manager.data,
+            "mode": self._app.mode,
         }
 
     def get_snapshots(self) -> dict[str, Any]:
@@ -307,10 +308,28 @@ class QuotaWebViewApp:
                 pw = geom.get("width") or 384
                 ax, ay = calc_avatar_anchor(px, py, pw, size)
 
+                hwnd = self.get_hwnd()
+                if hwnd and os.name == "nt":
+                    try:
+                        user32 = ctypes.windll.user32
+                        GWL_STYLE = -16
+                        WS_THICKFRAME = 0x00040000
+                        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+                        user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~WS_THICKFRAME)
+                        user32.SetWindowPos(hwnd, 0, ax, ay, size, size, 0x0027)
+                    except Exception:
+                        pass
+
                 self.window.resize(size, size)
                 self.window.move(ax, ay)
                 self._apply_circular_region(True, size)
                 self.config_manager.set("avatar_position", {"x": ax, "y": ay})
+
+                def _reclip():
+                    time.sleep(0.08)
+                    if self.mode == "avatar":
+                        self._apply_circular_region(True, size)
+                threading.Thread(target=_reclip, daemon=True).start()
             else:
                 self._apply_circular_region(False)
                 hwnd = self.get_hwnd()
@@ -410,7 +429,7 @@ class QuotaWebViewApp:
             easy_drag=False,
             on_top=self.is_pinned,
             background_color="#0e0f17",
-            min_size=(64, 64),
+            min_size=(32, 32),
             shadow=True,
         )
         self.window.events.minimized += self._on_minimized
@@ -421,19 +440,30 @@ class QuotaWebViewApp:
                 hwnd = self.get_hwnd()
                 if hwnd:
                     WindowService.subclass_minmax(hwnd, self)
+                    user32 = ctypes.windll.user32
+                    GWL_STYLE = -16
+                    WS_THICKFRAME = 0x00040000
+                    style = user32.GetWindowLongW(hwnd, GWL_STYLE)
                     if self.mode == "panel":
-                        user32 = ctypes.windll.user32
-                        GWL_STYLE = -16
-                        WS_THICKFRAME = 0x00040000
-                        style = user32.GetWindowLongW(hwnd, GWL_STYLE)
                         user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME)
-                        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
+                    else:
+                        user32.SetWindowLongW(hwnd, GWL_STYLE, style & ~WS_THICKFRAME)
+                    user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
             except Exception:
                 pass
             if self.mode == "avatar":
                 avatar_size = int(self.config_manager.get("avatar_size") or 72)
                 self.window.resize(avatar_size, avatar_size)
                 self._apply_circular_region(True, avatar_size)
+
+                def _reclip_init():
+                    time.sleep(0.12)
+                    if self.mode == "avatar":
+                        self._apply_circular_region(True, avatar_size)
+                    time.sleep(0.3)
+                    if self.mode == "avatar":
+                        self._apply_circular_region(True, avatar_size)
+                threading.Thread(target=_reclip_init, daemon=True).start()
 
         self.window.events.shown += _on_shown
         self.window.events.resized += lambda *args: self.save_preferences()

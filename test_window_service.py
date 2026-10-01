@@ -56,6 +56,10 @@ class TestWindowService(unittest.TestCase):
         WindowService.start_resize(None, "right")
         WindowService.subclass_minmax(None)
 
+    def test_get_window_scale_default(self):
+        scale = WindowService.get_window_scale(None)
+        self.assertEqual(scale, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

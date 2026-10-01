@@ -51,6 +51,13 @@
       border-radius: 50% !important;
       overflow: hidden !important;
       box-shadow: none !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
 
     /* Custom Scrollbar */
@@ -665,10 +672,8 @@
 
     /* Avatar View */
     .avatar-view {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      width: 100%;
-      height: 100%;
+      width: 72px;
+      height: 72px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -678,6 +683,9 @@
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
+      box-sizing: border-box;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      margin: auto;
     }
     .avatar-view:active {
       cursor: grabbing;
@@ -699,9 +707,13 @@
       height: 100%;
       filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
     }
-    .avatar-bolt-text {
-      font-family: "Segoe UI Symbol", "Apple Color Emoji", sans-serif;
+    .avatar-bolt-vector {
       cursor: pointer;
+      filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.95)) drop-shadow(0 0 12px rgba(245, 158, 11, 0.6));
+      transition: filter 0.2s ease;
+    }
+    .avatar-bolt-vector:hover {
+      filter: drop-shadow(0 0 8px #fbbf24) drop-shadow(0 0 16px #f59e0b);
     }
 
     /* Main View Tabs (Segmented Switcher) */
@@ -1016,21 +1028,21 @@
       <svg viewBox="0 0 72 72" class="avatar-svg" id="avatarSvg">
         <defs>
           <filter id="boltGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#fbbf24" flood-opacity="0.8"/>
+            <feDropShadow dx="0" dy="0" stdDeviation="2.5" flood-color="#fbbf24" flood-opacity="0.9"/>
           </filter>
         </defs>
         <!-- Dark Base -->
         <circle cx="36" cy="36" r="34" fill="#0d0e17" stroke="#1f2233" stroke-width="2" />
         <!-- Arc Track Background -->
         <circle cx="36" cy="36" r="28" fill="none" stroke="#1b1c2b" stroke-width="4.5" />
-        <!-- 3 Colored Health Arcs -->
-        <path id="avatarArcAgy" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
-        <path id="avatarArcClaude" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
-        <path id="avatarArcCodex" d="" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <!-- 3 Colored Health Arcs with Pre-rendered Default Paths -->
+        <path id="avatarArcAgy" d="M 62.31 45.58 A 28 28 0 0 0 40.86 8.43" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <path id="avatarArcClaude" d="M 14.55 54.00 A 28 28 0 0 0 57.45 54.00" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
+        <path id="avatarArcCodex" d="M 31.14 8.43 A 28 28 0 0 0 9.69 45.58" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
         <!-- Inner Core Disc -->
         <circle cx="36" cy="36" r="21" fill="#141522" stroke="#2a2c42" stroke-width="1.5" />
-        <!-- Lightning Bolt Icon -->
-        <text x="36" y="44" font-size="22" text-anchor="middle" fill="#fbbf24" filter="url(#boltGlow)" class="avatar-bolt-text">⚡</text>
+        <!-- Lightning Bolt Icon (Pure SVG Vector Path - Crisp & Glowing) -->
+        <path id="avatarBoltPath" d="M 37 23 L 28 36 L 35 36 L 32 49 L 44 34 L 37 34 Z" fill="#fbbf24" stroke="#f59e0b" stroke-width="1" stroke-linejoin="round" filter="url(#boltGlow)" class="avatar-bolt-vector" />
       </svg>
     </div>
   </div>
@@ -1999,7 +2011,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         if (data) {
           currentConfig = data.config || currentConfig;
           currentSnapshots = data.snapshots || {};
-          const initialMode = (window.innerWidth <= 120 || (data.config && data.config.ui_mode === "avatar")) ? "avatar" : "panel";
+          const initialMode = data.mode || (data.config && data.config.ui_mode) || "panel";
           applyMode(initialMode);
           document.getElementById("headerStatusText").innerText = "Atualizado";
         }
@@ -2025,10 +2037,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
     });
 
     window.addEventListener("resize", () => {
-      const mode = (window.innerWidth <= 120) ? "avatar" : "panel";
-      if (mode !== currentMode) {
-        applyMode(mode);
-      } else if (mode === "panel") {
+      if (currentMode === "panel") {
         if (currentMainTab === "live") {
           renderCards();
         } else {

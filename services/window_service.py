@@ -137,19 +137,45 @@ class WindowService:
     }
 
     @staticmethod
+    def get_window_scale(hwnd: int | None) -> float:
+        """Get monitor DPI scale for window (e.g. 1.0, 1.25, 1.5)."""
+        if not hwnd or os.name != "nt":
+            return 1.0
+        try:
+            user32 = ctypes.windll.user32
+            if hasattr(user32, "GetDpiForWindow"):
+                dpi = user32.GetDpiForWindow(hwnd)
+                if dpi > 0:
+                    return float(dpi) / 96.0
+        except Exception:
+            pass
+        return 1.0
+
+    @staticmethod
     def apply_circular_region(hwnd: int | None, is_avatar: bool, size: int = 72, scale: float = 1.0) -> None:
-        """Apply native elliptical clipping in avatar mode."""
+        """Apply native elliptical clipping in avatar mode to window and its children."""
         if not hwnd or os.name != "nt":
             return
         try:
             gdi32 = ctypes.windll.gdi32
             user32 = ctypes.windll.user32
+
+            hwnds = [hwnd]
+            def enum_cb(child, _lp):
+                hwnds.append(child)
+                return True
+            cmp_cb = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_cb)
+            user32.EnumChildWindows(hwnd, cmp_cb, 0)
+
             if is_avatar:
-                phys_size = int(size * scale)
-                hrgn = gdi32.CreateEllipticRgn(0, 0, phys_size, phys_size)
-                user32.SetWindowRgn(hwnd, hrgn, True)
+                effective_scale = WindowService.get_window_scale(hwnd) if scale <= 1.0 else scale
+                phys_size = max(32, int(size * effective_scale))
+                for h in hwnds:
+                    hrgn = gdi32.CreateEllipticRgn(0, 0, phys_size, phys_size)
+                    user32.SetWindowRgn(h, hrgn, True)
             else:
-                user32.SetWindowRgn(hwnd, None, True)
+                for h in hwnds:
+                    user32.SetWindowRgn(h, None, True)
         except Exception:
             pass
 
@@ -183,6 +209,7 @@ class WindowService:
 
             def sub_proc(hwnd_in, msg, wparam, lparam, uid, ref):
                 if msg == WM_GETMINMAXINFO:
+                    comctl32.DefSubclassProc(hwnd_in, msg, wparam, lparam)
                     mmi = ctypes.cast(lparam, ctypes.POINTER(MINMAXINFO)).contents
                     if app and getattr(app, "mode", "panel") == "panel":
                         mmi.ptMinTrackSize.x = 240

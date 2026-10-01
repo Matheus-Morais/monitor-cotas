@@ -227,6 +227,33 @@
     .dot-claude { background: var(--color-green); box-shadow: 0 0 8px var(--color-green); }
     .dot-codex { background: var(--color-purple); box-shadow: 0 0 8px var(--color-purple); }
 
+    .provider-logo {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      display: block;
+      object-fit: contain;
+    }
+    .label-mode-group {
+      display: flex;
+      gap: 6px;
+    }
+    .label-mode-btn {
+      flex: 1;
+      padding: 6px 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .label-mode-btn.active {
+      color: #fff;
+      border-color: var(--color-cyan);
+      background: rgba(56, 189, 248, 0.12);
+    }
+
     .card-title {
       font-size: 12px;
       font-weight: 700;
@@ -1257,11 +1284,32 @@
     };
 
     const PROVIDER_INFO = {
-      agy: { name: "Antigravity", dotClass: "dot-agy", color: "#38bdf8" },
-      claude1: { name: "Claude Code 1", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 1 },
-      claude2: { name: "Claude Code 2", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 2 },
-      codex: { name: "Codex", dotClass: "dot-codex", color: "#c084fc" }
+      agy: { name: "Antigravity", logo: "antigravity", dotClass: "dot-agy", color: "#38bdf8" },
+      claude1: { name: "Claude Code 1", logo: "claude", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 1 },
+      claude2: { name: "Claude Code 2", logo: "claude", dotClass: "dot-claude", color: "#34d399", hasSwitch: true, switchNum: 2 },
+      codex: { name: "Codex", logo: "openai", dotClass: "dot-codex", color: "#c084fc" }
     };
+
+    // Official brand logos live in ui/logos/<logo>.svg
+    function providerLabelHtml(info) {
+      const mode = currentConfig.provider_label_mode || "both";
+      const logo = `<img class="provider-logo" src="logos/${info.logo}.${info.logoExt || "svg"}" alt="${info.name}" title="${info.name}">`;
+      const name = `<span class="card-title">${info.name}</span>`;
+      if (mode === "logo") return logo;
+      if (mode === "name") return name;
+      return logo + name;
+    }
+
+    function setLabelMode(mode) {
+      currentConfig.provider_label_mode = mode;
+      renderCards();
+      renderModalOptions();
+      if (window.pywebview) {
+        window.pywebview.api.set_provider_label_mode(mode).then(cfg => {
+          currentConfig = cfg;
+        });
+      }
+    }
 
     function getHealthColor(pct) {
       if (pct === null || pct === undefined) return "#94a3b8";
@@ -1340,8 +1388,7 @@
         card.innerHTML = `
           <div class="card-header">
             <div class="card-title-group">
-              <div class="provider-dot ${info.dotClass}"></div>
-              <span class="card-title">${info.name}</span>
+              ${providerLabelHtml(info)}
             </div>
             <div class="card-actions">
               ${actionHtml}
@@ -1414,6 +1461,21 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
     function renderModalOptions() {
       const container = document.getElementById("modalOptionsList");
       container.innerHTML = "";
+
+      const mode = currentConfig.provider_label_mode || "both";
+      const modeSec = document.createElement("div");
+      modeSec.className = "modal-provider-sec";
+      const modeBtn = (value, text) =>
+        `<button class="label-mode-btn ${mode === value ? 'active' : ''}" onclick="setLabelMode('${value}')">${text}</button>`;
+      modeSec.innerHTML = `
+        <div class="modal-provider-title"><span>Identificação do provedor</span></div>
+        <div class="label-mode-group">
+          ${modeBtn('both', 'Logo + nome')}
+          ${modeBtn('logo', 'Só logo')}
+          ${modeBtn('name', 'Só nome')}
+        </div>
+      `;
+      container.appendChild(modeSec);
 
       for (const [providerKey, defs] of Object.entries(PROVIDER_METRICS)) {
         const info = PROVIDER_INFO[providerKey];

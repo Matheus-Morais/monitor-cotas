@@ -21,6 +21,7 @@ import webview
 from history import HistoryStore
 from services.config_manager import (
     DEFAULT_VISIBLE_METRICS,
+    PROVIDER_LABEL_MODES,
     ConfigManager,
     resolve_history_db_path,
 )
@@ -62,6 +63,12 @@ class QuotaAPI:
         else:
             prov_list.append(metric_key)
         self._app.config_manager.set("visible_metrics", visible)
+        return self._app.config_manager.data
+
+    def set_provider_label_mode(self, mode: str) -> dict[str, Any]:
+        """Choose how providers are labeled: 'both', 'logo' or 'name'."""
+        if mode in PROVIDER_LABEL_MODES:
+            self._app.config_manager.set("provider_label_mode", mode)
         return self._app.config_manager.data
 
     def reset_all_metrics(self) -> dict[str, Any]:

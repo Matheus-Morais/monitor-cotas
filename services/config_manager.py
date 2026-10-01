@@ -22,6 +22,8 @@ DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
     "codex": ["five_hour", "seven_day"],
 }
 
+PROVIDER_LABEL_MODES = ("both", "logo", "name")
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "ui_mode": "panel",
     "avatar_size": 72,
@@ -29,6 +31,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "panel_geometry": {"x": None, "y": None, "width": 384, "height": 581},
     "show_in_taskbar": False,
     "compact_mode": False,
+    "provider_label_mode": "both",
     "collapsed_cards": {
         "agy": False,
         "claude1": False,
@@ -159,6 +162,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "panel_geometry": dict(DEFAULT_CONFIG["panel_geometry"]),
         "show_in_taskbar": DEFAULT_CONFIG["show_in_taskbar"],
         "compact_mode": DEFAULT_CONFIG["compact_mode"],
+        "provider_label_mode": DEFAULT_CONFIG["provider_label_mode"],
         "collapsed_cards": dict(DEFAULT_CONFIG["collapsed_cards"]),
         "visible_metrics": {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()},
         "refresh_seconds": DEFAULT_CONFIG["refresh_seconds"],
@@ -202,6 +206,10 @@ def normalize_config(raw: Any) -> dict[str, Any]:
     # Flags
     config["show_in_taskbar"] = bool(raw.get("show_in_taskbar", config["show_in_taskbar"]))
     config["compact_mode"] = bool(raw.get("compact_mode", config["compact_mode"]))
+
+    label_mode = raw.get("provider_label_mode")
+    if label_mode in PROVIDER_LABEL_MODES:
+        config["provider_label_mode"] = label_mode
 
     # Collapsed Cards
     if isinstance(raw.get("collapsed_cards"), dict):

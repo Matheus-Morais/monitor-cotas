@@ -50,6 +50,9 @@ class MockApp:
     def manual_resize(self, width, height, x=None, y=None):
         return {"width": max(240, width), "height": max(180, height)}
 
+    def fit_size(self, delta_w, delta_h):
+        return {"dw": delta_w, "dh": delta_h}
+
     def close(self):
         pass
 
@@ -68,6 +71,16 @@ class TestQuotaAPI(unittest.TestCase):
         self.assertIn("mode", res)
         self.assertEqual(res["mode"], "panel")
         self.assertIn("agy", res["snapshots"])
+
+    def test_set_option_whitelist(self):
+        self.assertFalse(self.api.set_option("auto_height", False)["auto_height"])
+        self.assertTrue(self.api.set_option("show_plan", True)["show_plan"])
+        cfg = self.api.set_option("ui_mode", True)  # not a bool option: ignored
+        self.assertEqual(cfg["ui_mode"], "panel")
+
+    def test_fit_size_delegates(self):
+        self.assertEqual(self.api.fit_size(-30, -40), {"dw": -30, "dh": -40})
+        self.assertFalse(self.api.set_option("auto_width", False)["auto_width"])
 
     def test_get_snapshots(self):
         res = self.api.get_snapshots()

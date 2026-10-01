@@ -39,9 +39,20 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(normalize_config({"provider_label_mode": "xyz"})["provider_label_mode"], "both")
 
     def test_metrics_align(self):
-        self.assertEqual(normalize_config({})["metrics_align"], "center")
+        self.assertEqual(normalize_config({})["metrics_align"], "spread")
         self.assertEqual(normalize_config({"metrics_align": "left"})["metrics_align"], "left")
-        self.assertEqual(normalize_config({"metrics_align": "top"})["metrics_align"], "center")
+        self.assertEqual(normalize_config({"metrics_align": "spread"})["metrics_align"], "spread")
+        self.assertEqual(normalize_config({"metrics_align": "top"})["metrics_align"], "spread")
+
+    def test_card_info_options(self):
+        cfg = normalize_config({})
+        self.assertTrue(cfg["show_plan"])
+        self.assertFalse(cfg["show_account_email"])
+        self.assertTrue(cfg["auto_height"])
+        self.assertTrue(cfg["auto_width"])
+        cfg = normalize_config({"show_plan": False, "show_account_email": True})
+        self.assertFalse(cfg["show_plan"])
+        self.assertTrue(cfg["show_account_email"])
 
     def test_normalize_enforces_boundaries(self):
         raw = {

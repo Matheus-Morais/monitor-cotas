@@ -23,7 +23,8 @@ DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
 }
 
 PROVIDER_LABEL_MODES = ("both", "logo", "name")
-METRICS_ALIGN_MODES = ("left", "center", "right")
+METRICS_ALIGN_MODES = ("spread", "left", "center", "right")
+BOOL_OPTIONS = ("show_plan", "show_account_email", "auto_height", "auto_width")
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "ui_mode": "panel",
@@ -33,7 +34,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "show_in_taskbar": False,
     "compact_mode": False,
     "provider_label_mode": "both",
-    "metrics_align": "center",
+    "metrics_align": "spread",
+    "show_plan": True,
+    "show_account_email": False,
+    "auto_height": True,
+    "auto_width": True,
+    "known_plans": {},
     "collapsed_cards": {
         "agy": False,
         "claude1": False,
@@ -166,6 +172,11 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "compact_mode": DEFAULT_CONFIG["compact_mode"],
         "provider_label_mode": DEFAULT_CONFIG["provider_label_mode"],
         "metrics_align": DEFAULT_CONFIG["metrics_align"],
+        "show_plan": DEFAULT_CONFIG["show_plan"],
+        "show_account_email": DEFAULT_CONFIG["show_account_email"],
+        "auto_height": DEFAULT_CONFIG["auto_height"],
+        "auto_width": DEFAULT_CONFIG["auto_width"],
+        "known_plans": {},
         "collapsed_cards": dict(DEFAULT_CONFIG["collapsed_cards"]),
         "visible_metrics": {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()},
         "refresh_seconds": DEFAULT_CONFIG["refresh_seconds"],
@@ -216,6 +227,15 @@ def normalize_config(raw: Any) -> dict[str, Any]:
 
     if raw.get("metrics_align") in METRICS_ALIGN_MODES:
         config["metrics_align"] = raw["metrics_align"]
+
+    for flag in BOOL_OPTIONS:
+        config[flag] = bool(raw.get(flag, config[flag]))
+
+    # Last plan seen per provider (some sources only report it occasionally)
+    if isinstance(raw.get("known_plans"), dict):
+        config["known_plans"] = {
+            str(k): str(v) for k, v in raw["known_plans"].items() if v
+        }
 
     # Collapsed Cards
     if isinstance(raw.get("collapsed_cards"), dict):

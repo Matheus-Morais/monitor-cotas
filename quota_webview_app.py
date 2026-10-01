@@ -21,6 +21,7 @@ import webview
 from history import HistoryStore
 from services.config_manager import (
     DEFAULT_VISIBLE_METRICS,
+    BOOL_OPTIONS,
     METRICS_ALIGN_MODES,
     PROVIDER_LABEL_MODES,
     ConfigManager,
@@ -72,10 +73,20 @@ class QuotaAPI:
             self._app.config_manager.set("provider_label_mode", mode)
         return self._app.config_manager.data
 
+    def fit_size(self, delta_w: int, delta_h: int) -> dict[str, Any]:
+        """Resize the panel to its content on the axes where auto size is enabled."""
+        return self._app.fit_size(delta_w, delta_h)
+
     def set_metrics_align(self, align: str) -> dict[str, Any]:
         """Choose the horizontal alignment of the rings: 'left', 'center' or 'right'."""
         if align in METRICS_ALIGN_MODES:
             self._app.config_manager.set("metrics_align", align)
+        return self._app.config_manager.data
+
+    def set_option(self, key: str, value: bool) -> dict[str, Any]:
+        """Set an on/off display option (e.g. show_plan, show_account_email)."""
+        if key in BOOL_OPTIONS:
+            self._app.config_manager.set(key, bool(value))
         return self._app.config_manager.data
 
     def reset_all_metrics(self) -> dict[str, Any]:
@@ -166,6 +177,8 @@ class QuotaWebViewApp:
             history_store=self.history_store,
             refresh_interval=self.config_manager.get("refresh_seconds", 3.0),
             agy_poll_interval=self.config_manager.get("agy_poll_seconds", 120.0),
+            known_plans=self.config_manager.get("known_plans", {}),
+            on_plans_changed=lambda plans: self.config_manager.set("known_plans", plans),
         )
 
         # Background prune of old snapshots (7-day retention)
@@ -265,6 +278,28 @@ class QuotaWebViewApp:
             self.window.resize(width, height)
             if x is not None and y is not None:
                 self.window.move(int(x), int(y))
+        self.save_preferences()
+        return {"width": width, "height": height}
+
+    def fit_size(self, delta_w: int, delta_h: int) -> dict[str, Any]:
+        """Grow/shrink the panel by the given deltas so it matches its content.
+
+        Each axis is only touched when its auto option (auto_width / auto_height) is on.
+        """
+        if self.mode != "panel" or not self.window:
+            return {}
+        cur_w, cur_h = int(self.window.width), int(self.window.height)
+        width, height = cur_w, cur_h
+        if self.config_manager.get("auto_width", True):
+            width = max(240, cur_w + int(delta_w))
+        if self.config_manager.get("auto_height", True):
+            height = max(180, cur_h + int(delta_h))
+        if (width, height) == (cur_w, cur_h):
+            return {"width": width, "height": height}
+        x, y = clamp_to_work_area(self.window.x, self.window.y, width, height)
+        self.window.resize(width, height)
+        if self.window.y != y:
+            self.window.move(x, y)
         self.save_preferences()
         return {"width": width, "height": height}
 

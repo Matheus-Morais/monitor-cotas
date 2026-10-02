@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from config import MonitorConfig
+from providers.claude import ClaudeProvider
 from quota_core import ERROR, ProviderSnapshot, load_agy_snapshot, load_claude_snapshot, load_codex_snapshot
 
 
@@ -82,15 +83,18 @@ class QuotaCollector:
             return False
 
     def collect(self) -> DashboardSnapshot:
-        active = load_claude_snapshot(self.config.claude_active_json)
-        profile_1_path = self.config.claude_profile_1_json if self.config.claude_profile_1_json.exists() else self.config.claude_active_json
-        profile_2_path = self.config.claude_profile_2_json if self.config.claude_profile_2_json.exists() else self.config.claude_active_json
-        profile_1 = load_claude_snapshot(profile_1_path)
-        profile_2 = load_claude_snapshot(profile_2_path)
-        if active.account and profile_1.account == active.account:
-            profile_1 = active
-        if active.account and profile_2.account == active.account:
-            profile_2 = active
+        p1_path = self.config.claude_profile_1_json if self.config.claude_profile_1_json.exists() else self.config.claude_active_json
+        p2_path = self.config.claude_profile_2_json if self.config.claude_profile_2_json.exists() else self.config.claude_active_json
+        status_path = self.config.claude_status_json if hasattr(self.config, "claude_status_json") else None
+
+        prov1 = ClaudeProvider(1, profile_path=p1_path, active_path=self.config.claude_active_json, status_path=status_path)
+        prov2 = ClaudeProvider(2, profile_path=p2_path, active_path=self.config.claude_active_json, status_path=status_path)
+
+        profile_1 = prov1.collect()
+        profile_2 = prov2.collect()
+        active = profile_1 if getattr(profile_1, "is_active_account", False) else (
+            profile_2 if getattr(profile_2, "is_active_account", False) else profile_1
+        )
 
         return DashboardSnapshot(
             collected_at=time.time(),

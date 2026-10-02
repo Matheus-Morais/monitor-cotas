@@ -1,2 +1,2 @@
 @echo off
-start "" pythonw "%~dp0quota_webview_app.py" %*
+call "%~dp0bin\token-watch.cmd" %*

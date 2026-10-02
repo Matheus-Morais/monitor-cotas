@@ -247,6 +247,42 @@ class QuotaWebViewApp:
             except Exception:
                 pass
 
+    def activate_and_bring_to_front(self) -> None:
+        """Bring window to foreground and switch to panel if in avatar/hidden mode."""
+        if not self.window:
+            return
+        if self.mode == "avatar":
+            try:
+                self.set_mode("panel")
+            except Exception:
+                pass
+        try:
+            self.window.show()
+            self.window.restore()
+            self.is_minimized = False
+        except Exception:
+            pass
+        hwnd = self.get_hwnd()
+        if hwnd and os.name == "nt":
+            try:
+                user32 = ctypes.windll.user32
+                kernel32 = ctypes.windll.kernel32
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.ShowWindow(hwnd, 5)  # SW_SHOW
+                fore_hwnd = user32.GetForegroundWindow()
+                fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
+                cur_thread = kernel32.GetCurrentThreadId()
+                if fore_thread != cur_thread:
+                    user32.AttachThreadInput(fore_thread, cur_thread, True)
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.AttachThreadInput(fore_thread, cur_thread, False)
+                else:
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
     def get_hwnd(self) -> int | None:
         if self.window and hasattr(self.window, "native") and self.window.native:
             try:
@@ -573,9 +609,8 @@ def main() -> None:
         def _listener():
             while True:
                 res = kernel32.WaitForSingleObject(event_handle, 0xFFFFFFFF)
-                if res == 0 and app.window:
-                    app.window.show()
-                    app.window.restore()
+                if res == 0:
+                    app.activate_and_bring_to_front()
         threading.Thread(target=_listener, daemon=True, name="activation-listener").start()
 
     try:

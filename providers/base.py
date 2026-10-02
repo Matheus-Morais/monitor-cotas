@@ -20,6 +20,10 @@ class BaseProvider(ABC):
         """Collect current quotas and metrics for this provider."""
         raise NotImplementedError
 
+    def get_snapshot(self) -> ProviderSnapshot:
+        """Alias for collect() for convenience and backward compatibility."""
+        return self.collect()
+
     @abstractmethod
     def is_available(self) -> bool:
         """Check if source files or CLI tools for this provider exist."""

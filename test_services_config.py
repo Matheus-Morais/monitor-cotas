@@ -60,6 +60,33 @@ class TestConfigManager(unittest.TestCase):
         self.assertFalse(cfg["show_plan"])
         self.assertTrue(cfg["show_account_email"])
 
+    def test_avatar_alert_options(self):
+        cfg = normalize_config({})
+        self.assertIn("avatar_alert", cfg)
+        self.assertTrue(cfg["avatar_alert"]["enabled"])
+        self.assertEqual(cfg["avatar_alert"]["threshold_pct"], 15)
+        self.assertTrue(cfg["avatar_alert"]["pulse_animation"])
+
+        # Custom and boundaries
+        custom = normalize_config({
+            "avatar_alert": {
+                "enabled": False,
+                "threshold_pct": 25,
+                "pulse_animation": False,
+            }
+        })
+        self.assertFalse(custom["avatar_alert"]["enabled"])
+        self.assertEqual(custom["avatar_alert"]["threshold_pct"], 25)
+        self.assertFalse(custom["avatar_alert"]["pulse_animation"])
+
+        # Boundary clamping (<5 or >50 fallbacks)
+        out_of_bounds = normalize_config({
+            "avatar_alert": {
+                "threshold_pct": 2,  # < 5 fallback to 15
+            }
+        })
+        self.assertEqual(out_of_bounds["avatar_alert"]["threshold_pct"], 15)
+
     def test_normalize_enforces_boundaries(self):
         raw = {
             "ui_mode": "invalid_mode",

@@ -22,6 +22,12 @@ DEFAULT_VISIBLE_METRICS: dict[str, list[str]] = {
     "codex": ["five_hour", "seven_day"],
 }
 
+DEFAULT_AVATAR_ALERT: dict[str, Any] = {
+    "enabled": True,
+    "threshold_pct": 15,
+    "pulse_animation": True,
+}
+
 PROVIDER_LABEL_MODES = ("both", "logo", "name")
 METRICS_ALIGN_MODES = ("spread", "left", "center", "right")
 METRICS_STYLES = ("rings", "bars", "text")
@@ -41,6 +47,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "show_account_email": False,
     "auto_height": True,
     "auto_width": True,
+    "avatar_alert": dict(DEFAULT_AVATAR_ALERT),
     "known_plans": {},
     "collapsed_cards": {
         "agy": False,
@@ -259,6 +266,17 @@ def normalize_config(raw: Any) -> dict[str, Any]:
             else:
                 vm[prov] = list(defs)
         config["visible_metrics"] = vm
+
+    # Avatar alert configuration
+    raw_alert = raw.get("avatar_alert") if isinstance(raw.get("avatar_alert"), dict) else {}
+    thresh = _int_or(raw_alert.get("threshold_pct"), DEFAULT_AVATAR_ALERT["threshold_pct"], minimum=5)
+    if thresh is None or thresh > 50:
+        thresh = DEFAULT_AVATAR_ALERT["threshold_pct"]
+    config["avatar_alert"] = {
+        "enabled": bool(raw_alert.get("enabled", DEFAULT_AVATAR_ALERT["enabled"])),
+        "threshold_pct": thresh,
+        "pulse_animation": bool(raw_alert.get("pulse_animation", DEFAULT_AVATAR_ALERT["pulse_animation"])),
+    }
 
     # Polling intervals
     config["refresh_seconds"] = _float_or(raw.get("refresh_seconds"), config["refresh_seconds"], minimum=1.0)

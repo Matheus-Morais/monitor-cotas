@@ -37,7 +37,7 @@ With a single hotkey (**`Ctrl + Shift + C`**) or mouse click, switch between the
 
 ## ✨ Features
 
-- ⚡ **Floating Lightning Avatar (72 × 72 px):** A tiny circular widget clipped natively via Win32 elliptical regions. It displays real-time tri-color health arcs representing your AI quota health (Green / Yellow / Red).
+- ⚡ **Floating Lightning Avatar (72 × 72 px):** A tiny circular widget clipped natively via Win32 elliptical regions. Displays real-time tri-color health arcs and seamlessly transitions into a **live critical percentage badge with breathing pulse glow** when any quota drops below your threshold, complete with hover tooltips.
 - 📊 **Modern GPU-Accelerated HUD:** Built with Microsoft Edge Chromium (WebView2) + SVG circular wheels, delivering smooth animations and dark glassmorphic styling at 60+ FPS.
 - 🔄 **Instant Claude Code Account Switcher:** Toggle between multiple Claude profiles (`.claude-1.json`, `.claude-2.json`) with a single click—no manual `claude logout` or browser authentication hoops required.
 - 📐 **Responsive & Fully Resizable:** Drag any of the 8 borders or the diagonal grip in the footer. Fluidly scales from wide dashboards down to an ultra-compact **240px** layout.

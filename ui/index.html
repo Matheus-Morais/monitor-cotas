@@ -757,6 +757,63 @@
       transform: translateX(16px);
     }
 
+    .toggle-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.3;
+    }
+    .range-slider-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .range-slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-main);
+    }
+    .range-slider-val {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--color-red);
+      background: rgba(248, 113, 113, 0.15);
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1px solid rgba(248, 113, 113, 0.25);
+    }
+    .range-slider-input {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--bg-bar);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .range-slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-red);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(248, 113, 113, 0.7);
+      transition: transform 0.1s ease;
+    }
+    .range-slider-input::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
     .modal-footer {
       padding: 12px 18px;
       border-top: 1px solid var(--border-color);
@@ -905,6 +962,34 @@
     }
     .avatar-bolt-vector:hover {
       filter: drop-shadow(0 0 8px #fbbf24) drop-shadow(0 0 16px #f59e0b);
+    }
+
+    @keyframes avatarPulseRed {
+      0% {
+        box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6);
+        filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.6));
+      }
+      50% {
+        box-shadow: 0 0 18px 4px rgba(248, 113, 113, 0.85);
+        filter: drop-shadow(0 0 12px rgba(248, 113, 113, 0.95));
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6);
+        filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.6));
+      }
+    }
+    .avatar-view.avatar-in-alert.avatar-pulse {
+      animation: avatarPulseRed 2.2s infinite ease-in-out;
+    }
+    .avatar-alert-text {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      cursor: pointer;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
     /* Main View Tabs (Segmented Switcher) */
@@ -1186,6 +1271,9 @@
           <filter id="boltGlow" x="-30%" y="-30%" width="160%" height="160%">
             <feDropShadow dx="0" dy="0" stdDeviation="2.5" flood-color="#fbbf24" flood-opacity="0.9"/>
           </filter>
+          <filter id="alertGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#f87171" flood-opacity="0.9"/>
+          </filter>
         </defs>
         <!-- Dark Base -->
         <circle cx="36" cy="36" r="34" fill="#0d0e17" stroke="#1f2233" stroke-width="2" />
@@ -1196,9 +1284,13 @@
         <path id="avatarArcClaude" d="M 14.55 54.00 A 28 28 0 0 0 57.45 54.00" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
         <path id="avatarArcCodex" d="M 31.14 8.43 A 28 28 0 0 0 9.69 45.58" fill="none" stroke="#34d399" stroke-width="4.5" stroke-linecap="round" />
         <!-- Inner Core Disc -->
-        <circle cx="36" cy="36" r="21" fill="#141522" stroke="#2a2c42" stroke-width="1.5" />
+        <circle cx="36" cy="36" r="21" id="avatarCoreDisc" fill="#141522" stroke="#2a2c42" stroke-width="1.5" />
         <!-- Lightning Bolt Icon (Pure SVG Vector Path - Crisp & Glowing) -->
         <path id="avatarBoltPath" d="M 37 23 L 28 36 L 35 36 L 32 49 L 44 34 L 37 34 Z" fill="#fbbf24" stroke="#f59e0b" stroke-width="1" stroke-linejoin="round" filter="url(#boltGlow)" class="avatar-bolt-vector" />
+        <!-- Alert Group (Displays percentage text when in alert mode) -->
+        <g id="avatarAlertGroup" style="display: none; opacity: 0; transition: opacity 0.25s ease;">
+          <text id="avatarAlertText" x="36" y="36" text-anchor="middle" dominant-baseline="central" fill="#f87171" class="avatar-alert-text" filter="url(#alertGlow)">12%</text>
+        </g>
       </svg>
     </div>
   </div>
@@ -1846,6 +1938,47 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       }
       container.appendChild(winSec);
 
+      const alertCfg = currentConfig.avatar_alert || { enabled: true, threshold_pct: 15, pulse_animation: true };
+      const alertSec = document.createElement("div");
+      alertSec.className = "modal-provider-sec";
+      const isAlertOn = alertCfg.enabled !== false;
+      const isPulseOn = alertCfg.pulse_animation !== false;
+      const threshVal = alertCfg.threshold_pct !== undefined ? alertCfg.threshold_pct : 15;
+
+      alertSec.innerHTML = `
+        <div class="modal-provider-title"><span>Alerta no Avatar (⚡)</span></div>
+        <div class="toggle-row" onclick="setAvatarAlertSetting('enabled', ${!isAlertOn})">
+          <div>
+            <div class="toggle-label">Ativar alerta no Avatar</div>
+            <div class="toggle-sub">Exibe o percentual no centro ao atingir cota crítica</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" ${isAlertOn ? 'checked' : ''} onclick="event.stopPropagation(); setAvatarAlertSetting('enabled', !this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="range-slider-wrap">
+          <div class="range-slider-header">
+            <span>Limiar de disparo do alerta</span>
+            <span class="range-slider-val" id="avatarAlertVal">${threshVal}%</span>
+          </div>
+          <input type="range" class="range-slider-input" min="5" max="30" step="1" value="${threshVal}" 
+            oninput="document.getElementById('avatarAlertVal').textContent = this.value + '%'" 
+            onchange="setAvatarAlertSetting('threshold_pct', parseInt(this.value, 10))">
+        </div>
+        <div class="toggle-row" style="margin-top: 6px;" onclick="setAvatarAlertSetting('pulse_animation', ${!isPulseOn})">
+          <div>
+            <div class="toggle-label">Animação de pulso</div>
+            <div class="toggle-sub">Efeito pulsante suave com aura de alerta no disco</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" ${isPulseOn ? 'checked' : ''} onclick="event.stopPropagation(); setAvatarAlertSetting('pulse_animation', !this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      `;
+      container.appendChild(alertSec);
+
       for (const [providerKey, defs] of Object.entries(PROVIDER_METRICS)) {
         const info = PROVIDER_INFO[providerKey];
         const visibleKeys = currentConfig.visible_metrics[providerKey] || [];
@@ -1973,6 +2106,56 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
       return { color: "#34d399", pct: minPct };
     }
 
+    function setAvatarAlertSetting(key, val) {
+      if (!currentConfig.avatar_alert) {
+        currentConfig.avatar_alert = { enabled: true, threshold_pct: 15, pulse_animation: true };
+      }
+      currentConfig.avatar_alert[key] = val;
+      if (window.pywebview && window.pywebview.api) {
+        window.pywebview.api.set_avatar_alert_config(key, val).then(updated => {
+          if (updated) currentConfig = updated;
+          if (currentMode === "avatar") renderAvatar();
+        });
+      }
+    }
+
+    function getWorstQuotaInfo() {
+      let worst = null;
+      const providersToCheck = ["agy", "codex"];
+      const c2 = currentSnapshots["claude2"];
+      if (c2 && c2.is_active_account) {
+        providersToCheck.push("claude2");
+      } else {
+        providersToCheck.push("claude1");
+      }
+
+      for (const provKey of providersToCheck) {
+        const snap = currentSnapshots[provKey];
+        if (!snap || snap.status !== "ok" || !snap.metrics) continue;
+        const visibleKeys = (currentConfig.visible_metrics && currentConfig.visible_metrics[provKey]) || [];
+        for (const mKey of visibleKeys) {
+          const m = snap.metrics[mKey];
+          if (m && m.remaining_pct !== null && m.remaining_pct !== undefined) {
+            if (worst === null || m.remaining_pct < worst.remaining_pct) {
+              const provInfo = PROVIDER_INFO[provKey] || { name: provKey };
+              const mDefs = PROVIDER_METRICS[provKey] || [];
+              const mDef = mDefs.find(x => x.key === mKey) || { full: mKey, label: mKey };
+              worst = {
+                providerKey: provKey,
+                providerName: provInfo.name,
+                metricKey: mKey,
+                metricLabel: mDef.full || mDef.label,
+                remaining_pct: m.remaining_pct,
+                reset_at: m.reset_at,
+                detail: m.detail,
+              };
+            }
+          }
+        }
+      }
+      return worst;
+    }
+
     function renderAvatar() {
       const agyH = getProviderHealth("agy");
       const c1 = currentSnapshots["claude1"];
@@ -2002,9 +2185,62 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         elCodex.setAttribute("stroke", codexH.color);
       }
 
-      const disc = document.getElementById("avatarDisc");
-      if (disc) {
-        disc.removeAttribute("title");
+      // Avatar Alert State Evaluation
+      const alertCfg = currentConfig.avatar_alert || { enabled: true, threshold_pct: 15, pulse_animation: true };
+      const threshold = alertCfg.threshold_pct !== undefined ? alertCfg.threshold_pct : 15;
+      const worst = getWorstQuotaInfo();
+
+      const avatarView = document.getElementById("avatarView");
+      const avatarDisc = document.getElementById("avatarDisc");
+      const boltPath = document.getElementById("avatarBoltPath");
+      const alertGroup = document.getElementById("avatarAlertGroup");
+      const alertText = document.getElementById("avatarAlertText");
+      const coreDisc = document.getElementById("avatarCoreDisc");
+
+      const isInAlert = alertCfg.enabled !== false && worst !== null && worst.remaining_pct <= threshold;
+
+      if (isInAlert) {
+        if (avatarView) {
+          avatarView.classList.add("avatar-in-alert");
+          if (alertCfg.pulse_animation !== false) {
+            avatarView.classList.add("avatar-pulse");
+          } else {
+            avatarView.classList.remove("avatar-pulse");
+          }
+        }
+        if (boltPath) boltPath.style.display = "none";
+        if (alertGroup) {
+          alertGroup.style.display = "block";
+          alertGroup.style.opacity = "1";
+        }
+        const alertColor = worst.remaining_pct === 0 ? "#ef4444" : (worst.remaining_pct <= 10 ? "#f87171" : "#fbbf24");
+        if (alertText) {
+          alertText.textContent = `${worst.remaining_pct}%`;
+          alertText.setAttribute("fill", alertColor);
+        }
+        if (coreDisc) {
+          coreDisc.setAttribute("stroke", alertColor);
+        }
+
+        const cdStr = worst.reset_at ? formatCountdown(worst.reset_at) : (worst.detail || "");
+        const tooltip = `⚠️ TokenWatch [Alerta]\n${worst.providerName} (${worst.metricLabel}): ${worst.remaining_pct}% restante${cdStr ? ' · Reseta em ' + cdStr : ''}\n(Clique para abrir o painel)`;
+        if (avatarDisc) avatarDisc.setAttribute("title", tooltip);
+      } else {
+        if (avatarView) {
+          avatarView.classList.remove("avatar-in-alert", "avatar-pulse");
+        }
+        if (boltPath) boltPath.style.display = "block";
+        if (alertGroup) {
+          alertGroup.style.display = "none";
+          alertGroup.style.opacity = "0";
+        }
+        if (coreDisc) {
+          coreDisc.setAttribute("stroke", "#2a2c42");
+        }
+        if (avatarDisc) {
+          const healthyTooltip = "TokenWatch · Cotas Saudáveis\n(Clique para abrir o painel)";
+          avatarDisc.setAttribute("title", healthyTooltip);
+        }
       }
     }
 

@@ -78,6 +78,14 @@ class TestQuotaAPI(unittest.TestCase):
         cfg = self.api.set_option("ui_mode", True)  # not a bool option: ignored
         self.assertEqual(cfg["ui_mode"], "panel")
 
+    def test_set_avatar_alert_config(self):
+        res = self.api.set_avatar_alert_config("threshold_pct", 22)
+        self.assertEqual(res["avatar_alert"]["threshold_pct"], 22)
+        res2 = self.api.set_avatar_alert_config("pulse_animation", False)
+        self.assertFalse(res2["avatar_alert"]["pulse_animation"])
+        res3 = self.api.set_avatar_alert_config("enabled", False)
+        self.assertFalse(res3["avatar_alert"]["enabled"])
+
     def test_set_metrics_style(self):
         self.assertEqual(self.api.set_metrics_style("bars")["metrics_style"], "bars")
         self.assertEqual(self.api.set_metrics_style("pie")["metrics_style"], "bars")  # invalid: ignored

@@ -96,6 +96,20 @@ class QuotaAPI:
             self._app.config_manager.set(key, bool(value))
         return self._app.config_manager.data
 
+    def set_avatar_alert_config(self, key: str, value: Any) -> dict[str, Any]:
+        """Update avatar alert setting (enabled, threshold_pct, pulse_animation)."""
+        cfg = self._app.config_manager.data
+        alert_cfg = dict(cfg.get("avatar_alert") or {})
+        if key in ("enabled", "pulse_animation"):
+            alert_cfg[key] = bool(value)
+        elif key == "threshold_pct":
+            try:
+                alert_cfg[key] = max(5, min(50, int(value)))
+            except (TypeError, ValueError):
+                pass
+        self._app.config_manager.set("avatar_alert", alert_cfg)
+        return self._app.config_manager.data
+
     def reset_all_metrics(self) -> dict[str, Any]:
         """Reset visible metrics across all providers to default."""
         reset_metrics = {k: list(v) for k, v in DEFAULT_VISIBLE_METRICS.items()}

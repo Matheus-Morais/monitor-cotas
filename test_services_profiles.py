@@ -116,6 +116,31 @@ class TestProfileService(unittest.TestCase):
         active_cred_now = json.loads(cred_active.read_text(encoding="utf-8"))
         self.assertEqual(active_cred_now.get("claudeAiOauth", {}).get("accessToken"), "token-2")
 
+    def test_switch_account_clears_active_credentials_if_target_has_none(self):
+        # Setup: Account 1 is active with credentials
+        active_file = self.home_dir / ".claude.json"
+        active_file.write_text(json.dumps({"oauthAccount": {"emailAddress": "acc1@test.com"}}), encoding="utf-8")
+        claude_dir = self.home_dir / ".claude"
+        claude_dir.mkdir(parents=True)
+        cred_active = claude_dir / ".credentials.json"
+        cred_active.write_text(json.dumps({"claudeAiOauth": {"accessToken": "token-1"}}), encoding="utf-8")
+
+        p1 = self.home_dir / ".claude-1.json"
+        p1.write_text(json.dumps({"oauthAccount": {"emailAddress": "acc1@test.com"}}), encoding="utf-8")
+
+        # Account 2 has no saved credentials
+        p2 = self.home_dir / ".claude-2.json"
+        p2.write_text(json.dumps({"oauthAccount": {"emailAddress": "acc2@test.com"}}), encoding="utf-8")
+
+        success = self.service.switch_account_number(2)
+        self.assertTrue(success)
+
+        # Account 1's credentials were saved to .credentials-1.json
+        self.assertTrue((claude_dir / ".credentials-1.json").exists())
+
+        # Active .credentials.json was unlinked so it doesn't leak Account 1's token to Account 2
+        self.assertFalse(cred_active.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

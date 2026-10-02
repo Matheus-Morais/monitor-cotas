@@ -61,6 +61,30 @@ class QuotaCoreTests(unittest.TestCase):
         self.assertEqual(snapshot.metrics["gemini_5h"].reset_at, 1234)
         self.assertIsNone(snapshot.metrics["gemini_weekly"].remaining_pct)
 
+    def test_antigravity_missing_quota_is_unavailable(self):
+        path = self.write_json("agy_no_quota.json", {
+            "plan_tier": "Google AI Pro",
+            "model": {"display_name": "Gemini"},
+        })
+        snapshot = quota_core.load_agy_snapshot(path)
+        self.assertEqual(snapshot.status, quota_core.UNAVAILABLE)
+
+    def test_antigravity_underscored_keys_and_percentage(self):
+        path = self.write_json("agy_alt.json", {
+            "plan_tier": "Google AI Pro",
+            "model": {"display_name": "Gemini"},
+            "quota": {
+                "gemini_5h": {"remaining_percentage": 95, "resets_at": "2026-10-02T18:00:00Z"},
+                "gemini_weekly": {"used_percentage": 30, "reset_time": "2026-10-06T12:00:00Z"},
+                "3p_5h": {"remaining_fraction": 1.0},
+            },
+        })
+        snapshot = quota_core.load_agy_snapshot(path)
+        self.assertEqual(snapshot.status, quota_core.OK)
+        self.assertEqual(snapshot.metrics["gemini_5h"].remaining_pct, 95)
+        self.assertEqual(snapshot.metrics["gemini_weekly"].remaining_pct, 70)
+        self.assertEqual(snapshot.metrics["3p_5h"].remaining_pct, 100)
+
     def test_claude_rate_limits_snapshot(self):
         path = self.write_json("claude.json", {
             "model": {"display_name": "Sonnet"},

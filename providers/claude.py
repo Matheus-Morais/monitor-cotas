@@ -115,12 +115,12 @@ class ClaudeProvider(BaseProvider):
         self.active_email_getter = active_email_getter
         self.api_cache_ttl = api_cache_ttl
 
+        claude_dir = custom_home / ".claude" if custom_home != home else (home / ".claude")
         if credentials_path:
             self.credentials_path = Path(credentials_path)
         else:
-            claude_dir = custom_home / ".claude" if custom_home != home else (home / ".claude")
-            prof_cred = claude_dir / f".credentials-{account_num}.json"
-            self.credentials_path = prof_cred if prof_cred.exists() else (claude_dir / ".credentials.json")
+            self.credentials_path = claude_dir / f".credentials-{account_num}.json"
+        self.active_credentials_path = claude_dir / ".credentials.json"
 
         self._cached_api_usage: dict[str, Any] | None = None
         self._cached_api_time: float = 0.0
@@ -141,6 +141,39 @@ class ClaudeProvider(BaseProvider):
             return str(data.get("oauthAccount", {}).get("emailAddress", "") or "")
         except Exception:
             return ""
+
+    def _is_active_account(self) -> bool:
+        if self.active_email_getter:
+            try:
+                active_email = self.active_email_getter()
+                profile_email = self._get_profile_email()
+                if active_email and profile_email:
+                    return active_email == profile_email
+            except Exception:
+                pass
+
+        if self.active_path.exists():
+            try:
+                active_data = json.loads(self.active_path.read_text(encoding="utf-8"))
+                active_oauth = active_data.get("oauthAccount", {})
+                active_uuid = str(active_oauth.get("accountUuid", "") or "")
+                active_email = str(active_oauth.get("emailAddress", "") or "")
+
+                target = self.profile_path if self.profile_path.exists() else None
+                if target and target.exists():
+                    p_data = json.loads(target.read_text(encoding="utf-8"))
+                    p_oauth = p_data.get("oauthAccount", {})
+                    p_uuid = str(p_oauth.get("accountUuid", "") or "")
+                    p_email = str(p_oauth.get("emailAddress", "") or "")
+                    if active_uuid and p_uuid:
+                        return active_uuid == p_uuid
+                    if active_email and p_email:
+                        return active_email == p_email
+                elif self.account_num == 1:
+                    return True
+            except Exception:
+                pass
+        return False
 
     def _sync_active_cache(self, usage_data: dict[str, Any]) -> None:
         """Keep cachedUsageUtilization synchronized in active .claude.json and profile."""
@@ -166,18 +199,13 @@ class ClaudeProvider(BaseProvider):
             if not force and self._cached_api_usage is not None and (now - self._cached_api_time) < self.api_cache_ttl:
                 return self._cached_api_usage
 
-        # Look for credentials
-        claude_dir = self.credentials_path.parent
-        per_account_cred = claude_dir / f".credentials-{self.account_num}.json"
-        main_cred = claude_dir / ".credentials.json"
-
         token = ""
-        if is_active and main_cred.exists():
-            token = read_oauth_token(main_cred)
-        elif per_account_cred.exists():
-            token = read_oauth_token(per_account_cred)
-        elif self.credentials_path.exists():
+        # 1. Dedicated per-account credentials file always takes precedence
+        if self.credentials_path.exists():
             token = read_oauth_token(self.credentials_path)
+        # 2. Main active credentials can ONLY be used if this profile is the active one!
+        elif is_active and self.active_credentials_path.exists():
+            token = read_oauth_token(self.active_credentials_path)
 
         if not token:
             return None
@@ -201,9 +229,7 @@ class ClaudeProvider(BaseProvider):
             self._cached_api_time = 0.0
 
         def _do_fetch():
-            active_email = self.active_email_getter() if self.active_email_getter else ""
-            profile_email = self._get_profile_email()
-            is_active = bool(active_email and profile_email and profile_email == active_email)
+            is_active = self._is_active_account()
             self._fetch_and_cache_api(force=True, is_active=is_active)
 
         threading.Thread(target=_do_fetch, daemon=True, name=f"claude-refresh-{self.account_num}").start()
@@ -211,16 +237,11 @@ class ClaudeProvider(BaseProvider):
 
     def collect(self) -> ProviderSnapshot:
         try:
-            active_email = self.active_email_getter() if self.active_email_getter else ""
-            profile_email = self._get_profile_email()
-
-            is_active = bool(active_email and profile_email and profile_email == active_email)
-            if not is_active and self.account_num == 1 and not self.profile_path.exists() and self.active_path.exists():
-                is_active = True
+            is_active = self._is_active_account()
 
             # Determine primary file for identity & base snapshot
             primary_file = self.active_path if (is_active and self.active_path.exists()) else self.profile_path
-            if not primary_file.exists() and self.active_path.exists():
+            if not primary_file.exists() and is_active and self.active_path.exists():
                 primary_file = self.active_path
 
             base_snap: ProviderSnapshot | None = None

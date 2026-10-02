@@ -200,6 +200,12 @@ class ProfileService:
                     os.replace(temp_cred, self.credentials_path)
                 except Exception:
                     pass
+            else:
+                if self.credentials_path.exists():
+                    try:
+                        self.credentials_path.unlink()
+                    except OSError:
+                        pass
 
             return True
         except (OSError, FileNotFoundError):

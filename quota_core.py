@@ -81,18 +81,27 @@ def _age_seconds(path: str | os.PathLike[str]) -> int | None:
         return None
 
 
-def _read_json(path: str | os.PathLike[str]) -> tuple[dict[str, Any] | None, str, int | None]:
+def _read_json(
+    path: str | os.PathLike[str],
+    retries: int = 3,
+    retry_delay: float = 0.05,
+) -> tuple[dict[str, Any] | None, str, int | None]:
     path = os.fspath(path)
     if not os.path.exists(path):
         return None, UNAVAILABLE, None
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, dict):
+    for attempt in range(retries):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict):
+                return None, ERROR, _age_seconds(path)
+            return data, OK, _age_seconds(path)
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+                continue
             return None, ERROR, _age_seconds(path)
-        return data, OK, _age_seconds(path)
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None, ERROR, _age_seconds(path)
+    return None, ERROR, _age_seconds(path)
 
 
 def _percent(value: Any) -> int | None:
@@ -110,16 +119,25 @@ def _percent(value: Any) -> int | None:
 def _remaining_from_fraction(quota: Any) -> Metric:
     if not isinstance(quota, dict):
         return Metric()
+    reset_at = quota.get("reset_time") or quota.get("resets_at")
     fraction = quota.get("remaining_fraction")
     if isinstance(fraction, bool):
-        return Metric(reset_at=quota.get("reset_time"))
-    try:
+        return Metric(reset_at=reset_at)
+    if isinstance(fraction, (int, float)):
         remaining = round(float(fraction) * 100)
-    except (TypeError, ValueError):
-        remaining = None
-    if remaining is not None and not 0 <= remaining <= 100:
-        remaining = None
-    return Metric(remaining, quota.get("reset_time"))
+        if 0 <= remaining <= 100:
+            return Metric(remaining, reset_at)
+    rem_pct = quota.get("remaining_percentage")
+    if isinstance(rem_pct, (int, float)) and not isinstance(rem_pct, bool):
+        remaining = round(float(rem_pct))
+        if 0 <= remaining <= 100:
+            return Metric(remaining, reset_at)
+    used_pct = quota.get("used_percentage")
+    if isinstance(used_pct, (int, float)) and not isinstance(used_pct, bool):
+        remaining = 100 - round(float(used_pct))
+        if 0 <= remaining <= 100:
+            return Metric(remaining, reset_at)
+    return Metric(reset_at=reset_at)
 
 
 def _check_reset_expired(resets_at: Any, now: float | None = None) -> tuple[float | None, bool]:
@@ -175,13 +193,13 @@ def load_agy_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
 
     quotas = data.get("quota")
     if not isinstance(quotas, dict):
-        return ProviderSnapshot("antigravity", ERROR, source_age_seconds=age, error="quota ausente")
+        return ProviderSnapshot("antigravity", UNAVAILABLE, source_age_seconds=age, error="quota ausente")
 
     metrics = {
-        "gemini_5h": _remaining_from_fraction(quotas.get("gemini-5h")),
-        "gemini_weekly": _remaining_from_fraction(quotas.get("gemini-weekly")),
-        "3p_5h": _remaining_from_fraction(quotas.get("3p-5h")),
-        "3p_weekly": _remaining_from_fraction(quotas.get("3p-weekly")),
+        "gemini_5h": _remaining_from_fraction(quotas.get("gemini-5h") or quotas.get("gemini_5h")),
+        "gemini_weekly": _remaining_from_fraction(quotas.get("gemini-weekly") or quotas.get("gemini_weekly")),
+        "3p_5h": _remaining_from_fraction(quotas.get("3p-5h") or quotas.get("3p_5h")),
+        "3p_weekly": _remaining_from_fraction(quotas.get("3p-weekly") or quotas.get("3p_weekly")),
     }
     model = data.get("model", {})
     model_name = model.get("display_name", "") if isinstance(model, dict) else ""

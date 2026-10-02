@@ -138,6 +138,27 @@ class TestTelemetryService(unittest.TestCase):
         service.collect()
         self.assertEqual(len(received), 1)  # No new callback
 
+    def test_anti_flicker_does_not_poison_cache_with_error_status(self):
+        good = ProviderSnapshot("dummy", "ok", {"m1": Metric(95)}, account="u@e.com")
+        error_snap = ProviderSnapshot("dummy", "error", {}, account="u@e.com", error="corrupt")
+        provider = SequenceProvider("dummy", [good, error_snap])
+        service = TelemetryService(
+            providers=[provider],
+            profile_service=MagicMock(get_active_email=lambda: "u@e.com"),
+            anti_flicker_seconds=2.0,
+        )
+
+        res1 = service.collect()
+        self.assertEqual(res1["dummy"]["status"], "ok")
+        self.assertEqual(res1["dummy"]["metrics"]["m1"]["remaining_pct"], 95)
+        self.assertFalse(res1["dummy"]["is_stale"])
+
+        # Next collect returns error_snap, but anti-flicker should serve good snapshot as stale
+        res2 = service.collect()
+        self.assertEqual(res2["dummy"]["status"], "ok")
+        self.assertEqual(res2["dummy"]["metrics"]["m1"]["remaining_pct"], 95)
+        self.assertTrue(res2["dummy"]["is_stale"])
+
     def test_force_refresh_triggers_provider(self):
         provider = DummyProvider(key="dummy", should_fail=False)
         service = TelemetryService(providers=[provider])

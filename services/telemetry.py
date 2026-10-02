@@ -138,11 +138,17 @@ class TelemetryService:
                         metadata={"error": str(exc)},
                     )
 
-                # Check if snapshot is valid (ok or warn)
-                if snapshot and snapshot.status != "unavailable":
+                # Check if snapshot is valid (ok or warn, with at least one observed metric)
+                is_valid = bool(
+                    snapshot
+                    and snapshot.status in ("ok", "warn")
+                    and any(m.remaining_pct is not None for m in snapshot.metrics.values())
+                )
+
+                if is_valid:
                     self._last_good_snapshots[provider.key] = (snapshot, now)
                 else:
-                    # Check anti-flicker cache for transient failures
+                    # Check anti-flicker cache for transient failures or momentary read errors
                     cached = self._last_good_snapshots.get(provider.key)
                     if cached:
                         cached_snapshot, timestamp = cached

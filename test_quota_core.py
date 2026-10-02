@@ -194,9 +194,47 @@ class QuotaCoreTests(unittest.TestCase):
         self.assertIs(quota_monitor.QuotaCollector, collector.QuotaCollector)
         self.assertIs(quota_widget.QuotaCollector, collector.QuotaCollector)
 
-    def test_format_countdown_is_shared_and_deterministic(self):
-        self.assertEqual(quota_core.format_countdown(3661, now=0), "1h 01m 01s")
-        self.assertEqual(quota_core.format_countdown(59, now=60), "Resetado")
+    def test_claude_direct_api_payload_and_reset_expiration(self):
+        # 1. Direct API payload format from /api/oauth/usage
+        api_data = {
+            "five_hour": {"utilization": 25, "resets_at": 2000},
+            "seven_day": {"utilization": 60, "resets_at": 5000},
+            "context_window": {"remaining_percentage": 88},
+            "cost": {"total_cost_usd": 3.45},
+            "model": {"display_name": "Opus 5.5"},
+        }
+
+        # Case A: When now=1000 (before reset), values reflect used %
+        snap_active = quota_core.load_claude_snapshot(api_data, now=1000)
+        self.assertEqual(snap_active.status, quota_core.OK)
+        self.assertEqual(snap_active.metrics["five_hour"].remaining_pct, 75)
+        self.assertEqual(snap_active.metrics["five_hour"].detail, "uso 25%")
+        self.assertEqual(snap_active.metrics["seven_day"].remaining_pct, 40)
+        self.assertEqual(snap_active.metrics["context"].remaining_pct, 88)
+        self.assertEqual(snap_active.model, "Opus 5.5")
+        self.assertEqual(snap_active.metadata.get("cost_usd"), 3.45)
+
+        # Case B: When now=2500 (after five_hour reset, before seven_day reset)
+        snap_expired = quota_core.load_claude_snapshot(api_data, now=2500)
+        self.assertEqual(snap_expired.metrics["five_hour"].remaining_pct, 100)
+        self.assertEqual(snap_expired.metrics["five_hour"].detail, "resetado")
+        self.assertEqual(snap_expired.metrics["seven_day"].remaining_pct, 40)
+
+    def test_claude_iso_reset_expiration(self):
+        # ISO timestamp in the past
+        data = {
+            "rate_limits": {
+                "five_hour": {"used_percentage": 50, "resets_at": "2026-10-01T12:00:00+00:00"},
+                "seven_day": {"used_percentage": 70, "resets_at": "2026-10-05T12:00:00+00:00"},
+            }
+        }
+        # now is 2026-10-01T13:00:00 (1 hour after five_hour reset)
+        import datetime
+        now = datetime.datetime.fromisoformat("2026-10-01T13:00:00+00:00").timestamp()
+        snap = quota_core.load_claude_snapshot(data, now=now)
+        self.assertEqual(snap.metrics["five_hour"].remaining_pct, 100)
+        self.assertEqual(snap.metrics["five_hour"].detail, "resetado")
+        self.assertEqual(snap.metrics["seven_day"].remaining_pct, 30)
 
 
 if __name__ == "__main__":

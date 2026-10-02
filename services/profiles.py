@@ -1,7 +1,8 @@
 """Profile management service for switching Claude accounts safely.
 
 Includes atomic file replacement, automatic rotating backups (keeping last N),
-and non-blocking extraction of active account identity.
+bidirectional state synchronization between active .claude.json and profile files,
+and preservation/restoration of per-profile credentials.
 """
 
 from __future__ import annotations
@@ -36,17 +37,27 @@ class ProfileService:
         self.backup_dir = Path(backup_dir) if backup_dir else get_default_backup_dir()
         self.max_backups = max(1, max_backups)
         self.active_path = self.home_dir / ".claude.json"
+        self.claude_dir = self.home_dir / ".claude"
+        self.credentials_path = self.claude_dir / ".credentials.json"
 
     def get_active_email(self) -> str:
         """Read and return active Claude account email without throwing exceptions."""
+        return self.get_active_account_identity().get("email", "")
+
+    def get_active_account_identity(self) -> dict[str, str]:
+        """Read and return active Claude account email and account UUID."""
         if not self.active_path.exists():
-            return ""
+            return {}
         try:
             content = self.active_path.read_text(encoding="utf-8")
             data = json.loads(content)
-            return data.get("oauthAccount", {}).get("emailAddress", "")
+            oauth = data.get("oauthAccount", {})
+            return {
+                "email": str(oauth.get("emailAddress", "") or ""),
+                "account_uuid": str(oauth.get("accountUuid", "") or ""),
+            }
         except Exception:
-            return ""
+            return {}
 
     def rotate_backups(self) -> list[Path]:
         """Prune backup directory, keeping only the most recent N backups."""
@@ -67,6 +78,54 @@ class ProfileService:
                 pass
 
         return backups[:self.max_backups]
+
+    def _sync_current_profile_before_switch(self, target_num: int) -> int | None:
+        """Save active state and credentials back to the matching profile before switching."""
+        if not self.active_path.exists():
+            return None
+
+        ident = self.get_active_account_identity()
+        current_email = ident.get("email", "")
+        current_uuid = ident.get("account_uuid", "")
+
+        matched_num: int | None = None
+        for n in range(1, 10):
+            p = self.home_dir / f".claude-{n}.json"
+            if not p.exists():
+                continue
+            try:
+                p_data = json.loads(p.read_text(encoding="utf-8"))
+                p_oauth = p_data.get("oauthAccount", {})
+                p_email = str(p_oauth.get("emailAddress", "") or "")
+                p_uuid = str(p_oauth.get("accountUuid", "") or "")
+                if (current_uuid and p_uuid == current_uuid) or (current_email and p_email == current_email):
+                    matched_num = n
+                    break
+            except Exception:
+                continue
+
+        # If not uniquely matched, infer from target (e.g. switching to 1 implies leaving 2)
+        if matched_num is None:
+            inferred = 2 if target_num == 1 else 1
+            if (self.home_dir / f".claude-{inferred}.json").exists():
+                matched_num = inferred
+
+        if matched_num is not None:
+            dest_profile = self.home_dir / f".claude-{matched_num}.json"
+            try:
+                shutil.copy2(self.active_path, dest_profile)
+            except Exception:
+                pass
+
+            if self.credentials_path.exists():
+                dest_cred = self.claude_dir / f".credentials-{matched_num}.json"
+                try:
+                    self.claude_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(self.credentials_path, dest_cred)
+                except Exception:
+                    pass
+
+        return matched_num
 
     def switch_profile(
         self,
@@ -114,10 +173,34 @@ class ProfileService:
         return backup_file
 
     def switch_account_number(self, account_num: int) -> bool:
-        """Switch to ~/.claude-{account_num}.json."""
+        """Switch to ~/.claude-{account_num}.json with full state & credential sync."""
         source = self.home_dir / f".claude-{account_num}.json"
+        if not source.exists():
+            return False
+
         try:
+            # 1. Sync current active account back to its profile
+            self._sync_current_profile_before_switch(account_num)
+
+            # 2. Switch main .claude.json
             self.switch_profile(source)
+
+            # 3. Restore matching credentials if saved
+            target_cred = self.claude_dir / f".credentials-{account_num}.json"
+            if target_cred.exists():
+                try:
+                    self.claude_dir.mkdir(parents=True, exist_ok=True)
+                    fd, temp_cred = tempfile.mkstemp(
+                        prefix="claude-cred-",
+                        suffix=".tmp",
+                        dir=str(self.claude_dir),
+                    )
+                    os.close(fd)
+                    shutil.copy2(target_cred, temp_cred)
+                    os.replace(temp_cred, self.credentials_path)
+                except Exception:
+                    pass
+
             return True
         except (OSError, FileNotFoundError):
             return False

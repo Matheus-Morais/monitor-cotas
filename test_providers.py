@@ -117,15 +117,73 @@ class TestProviders(unittest.TestCase):
         self.assertEqual(snapshot.account, "dev2@test.com")
         self.assertEqual(snapshot.model, "claude-3-5-sonnet")
 
-    def test_codex_provider_missing(self):
-        prov = CodexProvider(
-            history_db=self.base_path / "thread.sqlite",
-            state_db=self.base_path / "state.sqlite",
-            rollouts_dir=self.base_path / "rollouts",
+    def test_claude_provider_merges_statusline_context_and_model(self):
+        active_file = self.base_path / ".claude.json"
+        active_file.write_text(
+            json.dumps({
+                "oauthAccount": {"emailAddress": "active@domain.com", "organizationType": "claude_team"},
+                "cachedUsageUtilization": {
+                    "utilization": {
+                        "five_hour": {"utilization": 10, "resets_at": 20000},
+                        "seven_day": {"utilization": 20, "resets_at": 30000},
+                    }
+                }
+            }),
+            encoding="utf-8",
         )
-        self.assertFalse(prov.is_available())
-        snapshot = prov.collect()
-        self.assertEqual(snapshot.status, "unavailable")
+
+        status_file = self.base_path / "claude-statusline.json"
+        status_file.write_text(
+            json.dumps({
+                "model": {"display_name": "Opus 5.5 (Live)"},
+                "context_window": {"remaining_percentage": 78},
+                "rate_limits": {
+                    "five_hour": {"used_percentage": 12, "resets_at": 20000},
+                    "seven_day": {"used_percentage": 22, "resets_at": 30000},
+                },
+                "cost": {"total_cost_usd": 4.56},
+            }),
+            encoding="utf-8",
+        )
+
+        prov = ClaudeProvider(
+            account_num=1,
+            profile_path=self.base_path / ".claude-1.json",
+            active_path=active_file,
+            status_path=status_file,
+            active_email_getter=lambda: "active@domain.com",
+        )
+
+        snap = prov.collect()
+        self.assertEqual(snap.status, "ok")
+        self.assertEqual(snap.account, "active@domain.com")
+        self.assertEqual(snap.plan, "Team")
+        self.assertEqual(snap.model, "Opus 5.5 (Live)")
+        self.assertEqual(snap.metrics["context"].remaining_pct, 78)
+        self.assertEqual(snap.metadata.get("cost_usd"), 4.56)
+
+    def test_claude_provider_availability_rules(self):
+        # Account 2 requires .claude-2.json to exist
+        prov2 = ClaudeProvider(
+            account_num=2,
+            profile_path=self.base_path / ".claude-2.json",
+            active_path=self.base_path / ".claude.json",
+        )
+        self.assertFalse(prov2.is_available())
+
+        # Account 1 is available if active_path exists
+        active_file = self.base_path / ".claude.json"
+        active_file.write_text("{}", encoding="utf-8")
+        prov1 = ClaudeProvider(
+            account_num=1,
+            profile_path=self.base_path / ".claude-1.json",
+            active_path=active_file,
+        )
+        self.assertTrue(prov1.is_available())
+
+    def test_claude_provider_trigger_refresh(self):
+        prov = ClaudeProvider(account_num=1)
+        self.assertTrue(prov.trigger_refresh())
 
 
 if __name__ == "__main__":

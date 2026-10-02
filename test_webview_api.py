@@ -113,7 +113,7 @@ class TestQuotaAPI(unittest.TestCase):
         success = self.api.switch_claude(1)
         self.assertTrue(success)
         self.mock_app.profile_service.switch_account_number.assert_called_with(1)
-        self.mock_app.telemetry_service.collect.assert_called()
+        self.mock_app.telemetry_service.force_refresh.assert_called()
 
     def test_force_refresh(self):
         res = self.api.force_refresh()

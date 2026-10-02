@@ -122,12 +122,44 @@ def _remaining_from_fraction(quota: Any) -> Metric:
     return Metric(remaining, quota.get("reset_time"))
 
 
-def _remaining_from_used(quota: Any, field: str) -> Metric:
+def _check_reset_expired(resets_at: Any, now: float | None = None) -> tuple[float | None, bool]:
+    if not resets_at:
+        return None, False
+    epoch: float | None = None
+    if isinstance(resets_at, (int, float)):
+        epoch = float(resets_at) / 1000.0 if resets_at > 1e11 else float(resets_at)
+    elif isinstance(resets_at, str):
+        try:
+            epoch = _datetime.datetime.fromisoformat(resets_at.replace("Z", "+00:00")).timestamp()
+        except (ValueError, TypeError, OverflowError):
+            return None, False
+
+    if epoch is None:
+        return None, False
+
+    current_time = time.time() if now is None else now
+    if now is None and epoch < 1e9:
+        return epoch, False
+
+    return epoch, epoch <= current_time
+
+
+def _remaining_from_used(quota: Any, field: str, now: float | None = None) -> Metric:
     if not isinstance(quota, dict):
         return Metric()
     used = _percent(quota.get(field))
+    resets_at = quota.get("resets_at")
     remaining = None if used is None else 100 - used
-    return Metric(remaining, quota.get("resets_at"))
+
+    epoch, is_expired = _check_reset_expired(resets_at, now=now)
+    detail = ""
+    if is_expired:
+        remaining = 100
+        detail = "resetado"
+    elif used is not None:
+        detail = f"uso {used}%"
+
+    return Metric(remaining, resets_at, detail=detail)
 
 
 def _snapshot_status(metrics: dict[str, Metric], source_status: str) -> str:
@@ -177,13 +209,27 @@ def _claude_plan_label(oauth_account: dict) -> str:
     return name
 
 
-def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
-    data, source_status, age = _read_json(path)
-    if data is None:
-        return ProviderSnapshot("claude", source_status, source_age_seconds=age)
+def load_claude_snapshot(
+    path_or_data: str | os.PathLike[str] | dict[str, Any],
+    now: float | None = None,
+) -> ProviderSnapshot:
+    if isinstance(path_or_data, dict):
+        data = path_or_data
+        source_status = OK
+        age = 0
+    else:
+        data, source_status, age = _read_json(path_or_data)
+        if data is None:
+            return ProviderSnapshot("claude", source_status, source_age_seconds=age)
 
     model = data.get("model", {})
-    model_name = model.get("display_name", "") if isinstance(model, dict) else ""
+    if isinstance(model, dict):
+        model_name = model.get("display_name", "") or model.get("id", "")
+    elif isinstance(model, str):
+        model_name = model
+    else:
+        model_name = ""
+
     account = data.get("oauthAccount", {})
     account_is_dict = isinstance(account, dict)
     plan = _claude_plan_label(account if account_is_dict else {})
@@ -197,6 +243,13 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
         "telemetry_available": False,
     }
 
+    cost = data.get("cost")
+    if isinstance(cost, dict) and "total_cost_usd" in cost:
+        try:
+            metadata["cost_usd"] = float(cost["total_cost_usd"])
+        except (TypeError, ValueError):
+            pass
+
     cached = data.get("cachedUsageUtilization", {})
     utilization = cached.get("utilization") if isinstance(cached, dict) else None
     rate_limits = data.get("rate_limits")
@@ -204,16 +257,24 @@ def load_claude_snapshot(path: str | os.PathLike[str]) -> ProviderSnapshot:
 
     if isinstance(utilization, dict):
         metrics = {
-            "five_hour": _remaining_from_used(utilization.get("five_hour"), "utilization"),
-            "seven_day": _remaining_from_used(utilization.get("seven_day"), "utilization"),
+            "five_hour": _remaining_from_used(utilization.get("five_hour"), "utilization", now=now),
+            "seven_day": _remaining_from_used(utilization.get("seven_day"), "utilization", now=now),
         }
         context = data.get("context_window")
         context_pct = context.get("remaining_percentage") if isinstance(context, dict) else None
         metrics["context"] = Metric(_percent(context_pct))
     elif isinstance(rate_limits, dict):
         metrics = {
-            "five_hour": _remaining_from_used(rate_limits.get("five_hour"), "used_percentage"),
-            "seven_day": _remaining_from_used(rate_limits.get("seven_day"), "used_percentage"),
+            "five_hour": _remaining_from_used(rate_limits.get("five_hour"), "used_percentage", now=now),
+            "seven_day": _remaining_from_used(rate_limits.get("seven_day"), "used_percentage", now=now),
+        }
+        context = data.get("context_window")
+        context_pct = context.get("remaining_percentage") if isinstance(context, dict) else None
+        metrics["context"] = Metric(_percent(context_pct))
+    elif isinstance(data.get("five_hour"), dict) or isinstance(data.get("seven_day"), dict):
+        metrics = {
+            "five_hour": _remaining_from_used(data.get("five_hour"), "utilization", now=now),
+            "seven_day": _remaining_from_used(data.get("seven_day"), "utilization", now=now),
         }
         context = data.get("context_window")
         context_pct = context.get("remaining_percentage") if isinstance(context, dict) else None

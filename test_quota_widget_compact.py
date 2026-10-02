@@ -160,6 +160,39 @@ class QuotaWidgetInteractiveTests(unittest.TestCase):
             finally:
                 root.destroy()
 
+    def test_hud_app_claude_delegation(self):
+        import tkinter as tk
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_file = Path(tmp_dir) / "config.json"
+            save_ui_config({"ui_mode": "panel"}, config_file)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                app = quota_widget.QuotaHUDApp(root, config_path=config_file)
+                app.profile_service = MagicMock()
+                app.profile_service.get_active_email.return_value = "claude1@example.com"
+                app.claude_providers[1] = MagicMock()
+                app.claude_providers[2] = MagicMock()
+                mock_snap = quota_widget.ProviderSnapshot(provider="claude1", status="ok", metrics={})
+                app.claude_providers[1].get_snapshot.return_value = mock_snap
+                app.claude_providers[2].get_snapshot.return_value = mock_snap
+
+                snapshots = app.collect_snapshots()
+                self.assertEqual(snapshots["claude1"], mock_snap)
+                self.assertEqual(snapshots["claude2"], mock_snap)
+                app.claude_providers[1].get_snapshot.assert_called_once()
+
+                app.switch_claude1()
+                app.profile_service.switch_account_number.assert_called_with(1)
+                app.claude_providers[1].trigger_refresh.assert_called()
+
+                app.switch_claude2()
+                app.profile_service.switch_account_number.assert_called_with(2)
+                app.claude_providers[2].trigger_refresh.assert_called()
+            finally:
+                root.destroy()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

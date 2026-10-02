@@ -78,6 +78,44 @@ class TestProfileService(unittest.TestCase):
         self.assertTrue(self.service.switch_account_number(2))
         self.assertFalse(self.service.switch_account_number(99))
 
+    def test_switch_account_syncs_outgoing_and_incoming_credentials(self):
+        # Setup: Account 1 is currently active with unique email
+        active_file = self.home_dir / ".claude.json"
+        active_file.write_text(
+            json.dumps({"oauthAccount": {"emailAddress": "acc1@test.com", "accountUuid": "uuid-1"}, "latest_turn": 42}),
+            encoding="utf-8",
+        )
+        claude_dir = self.home_dir / ".claude"
+        claude_dir.mkdir(parents=True)
+        cred_active = claude_dir / ".credentials.json"
+        cred_active.write_text(json.dumps({"claudeAiOauth": {"accessToken": "token-1"}}), encoding="utf-8")
+
+        # Account 1 profile exists
+        p1 = self.home_dir / ".claude-1.json"
+        p1.write_text(json.dumps({"oauthAccount": {"emailAddress": "acc1@test.com", "accountUuid": "uuid-1"}}), encoding="utf-8")
+
+        # Target Account 2 exists with saved credentials
+        p2 = self.home_dir / ".claude-2.json"
+        p2.write_text(json.dumps({"oauthAccount": {"emailAddress": "acc2@test.com", "accountUuid": "uuid-2"}}), encoding="utf-8")
+        cred2 = claude_dir / ".credentials-2.json"
+        cred2.write_text(json.dumps({"claudeAiOauth": {"accessToken": "token-2"}}), encoding="utf-8")
+
+        # Switch to Account 2
+        success = self.service.switch_account_number(2)
+        self.assertTrue(success)
+
+        # Verify Account 1 profile was updated with active state (latest_turn: 42)
+        p1_updated = json.loads(p1.read_text(encoding="utf-8"))
+        self.assertEqual(p1_updated.get("latest_turn"), 42)
+
+        # Verify Account 1 credentials were saved to .credentials-1.json
+        cred1_saved = json.loads((claude_dir / ".credentials-1.json").read_text(encoding="utf-8"))
+        self.assertEqual(cred1_saved.get("claudeAiOauth", {}).get("accessToken"), "token-1")
+
+        # Verify active .credentials.json now contains Account 2's token
+        active_cred_now = json.loads(cred_active.read_text(encoding="utf-8"))
+        self.assertEqual(active_cred_now.get("claudeAiOauth", {}).get("accessToken"), "token-2")
+
 
 if __name__ == "__main__":
     unittest.main()

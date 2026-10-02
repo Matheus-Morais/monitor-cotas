@@ -14,6 +14,7 @@ from pathlib import Path
 
 import keyboard
 
+from providers.claude import ClaudeProvider
 from quota_core import (
     OK,
     ERROR,
@@ -28,6 +29,7 @@ from quota_ui_state import (
     load_ui_config,
     save_ui_config,
 )
+from services.profiles import ProfileService
 
 
 PROVIDER_METRIC_DEFINITIONS: dict[str, list[tuple[str, str, str]]] = {
@@ -404,6 +406,11 @@ class QuotaHUDApp:
         self.hotkey_handle = None
         self.tray_icon = None
         self.is_topmost = True
+        self.profile_service = ProfileService(home_dir=HOME_DIR)
+        self.claude_providers = {
+            1: ClaudeProvider(1, active_email_getter=self.profile_service.get_active_email),
+            2: ClaudeProvider(2, active_email_getter=self.profile_service.get_active_email),
+        }
 
         root.title("Monitor de Cotas")
         root.configure(bg=BG_MAIN)
@@ -1010,7 +1017,10 @@ class QuotaHUDApp:
 
     def _metric_tooltip(self, snapshot, full_label: str, metric) -> str:
         pct = "N/D" if metric is None or metric.remaining_pct is None else f"{metric.remaining_pct}%"
-        countdown = format_countdown(metric.reset_at) if metric and metric.reset_at else "sem reset informado"
+        if metric and getattr(metric, "detail", "") == "resetado":
+            countdown = "Resetado"
+        else:
+            countdown = format_countdown(metric.reset_at) if metric and metric.reset_at else "sem reset informado"
         detail = f"\nDetalhe: {metric.detail}" if metric and metric.detail else ""
         age = "desconhecida" if snapshot.source_age_seconds is None else f"há {snapshot.source_age_seconds}s"
         estimate = " (estimativa)" if snapshot.estimated or (metric and metric.estimated) else ""
@@ -1021,20 +1031,28 @@ class QuotaHUDApp:
         tile["indicator"].set_value(pct)
         color = metric_color(pct)
         tile["value"].config(text="N/D" if pct is None else ("0%" if pct == 0 else f"{pct}%"), fg=color)
-        tile["reset"].config(text=visible_countdown(metric.reset_at) if metric and pct is not None else "")
+        reset_text = ""
+        if metric and pct is not None:
+            if getattr(metric, "detail", "") == "resetado":
+                reset_text = "Resetado"
+            elif metric.reset_at:
+                reset_text = visible_countdown(metric.reset_at)
+        tile["reset"].config(text=reset_text)
         tile["tooltip"].set_text(self._metric_tooltip(snapshot, tile["full_label"], metric))
 
     def _update_card(self, key: str, snapshot, *, claude: bool = False) -> None:
         controls = self.controls[key]
         if snapshot.status == OK:
             info_text = snapshot.account or snapshot.plan or "Disponível"
+            if getattr(snapshot, "model", ""):
+                info_text = f"{info_text} ({snapshot.model})"
             controls["sub_info"].config(text=info_text, fg=TEXT_MUTED)
         else:
             status = "Sem dados" if snapshot.status == "unavailable" else "Erro na leitura"
             controls["sub_info"].config(text=status, fg=TEXT_MUTED)
         if claude and controls["action_btn"]:
             active_email = self.get_user_email()
-            is_active = bool(snapshot.account and snapshot.account == active_email)
+            is_active = getattr(snapshot, "is_active_account", False) or bool(snapshot.account and snapshot.account == active_email)
             controls["action_btn"].config(text=" ✓ ATIVA " if is_active else " Ativar ", bg=BG_MAIN if is_active else controls["accent"], fg=COLOR_GREEN if is_active else BG_MAIN, cursor="arrow" if is_active else "hand2")
         for metric_key, tile in controls["tiles"].items():
             self._set_tile(tile, snapshot, snapshot.metrics.get(metric_key))
@@ -1108,22 +1126,13 @@ class QuotaHUDApp:
         except Exception:
             results["agy"] = ProviderSnapshot(provider="antigravity", status="unavailable")
 
-        active_email = self.get_user_email()
-        c1_path = HOME_DIR / ".claude-1.json"
-        c2_path = HOME_DIR / ".claude-2.json"
         try:
-            c1 = load_claude_snapshot(str(c1_path) if c1_path.exists() else CLAUDE_STATUS_JSON)
-            if c1.account == active_email and active_email:
-                c1 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
-            results["claude1"] = c1
+            results["claude1"] = self.claude_providers[1].get_snapshot()
         except Exception:
             results["claude1"] = ProviderSnapshot(provider="claude", status="unavailable")
 
         try:
-            c2 = load_claude_snapshot(str(c2_path) if c2_path.exists() else CLAUDE_STATUS_JSON)
-            if c2.account == active_email and active_email:
-                c2 = load_claude_snapshot(str(CLAUDE_JSON_PATH))
-            results["claude2"] = c2
+            results["claude2"] = self.claude_providers[2].get_snapshot()
         except Exception:
             results["claude2"] = ProviderSnapshot(provider="claude", status="unavailable")
 
@@ -1145,8 +1154,11 @@ class QuotaHUDApp:
         try:
             snapshots = self.collect_snapshots()
             self._last_fetch = time.time()
-            if self.root.winfo_exists():
-                self.root.after(0, lambda: self._apply_snapshots(snapshots))
+            try:
+                if self.root.winfo_exists():
+                    self.root.after(0, lambda: self._apply_snapshots(snapshots))
+            except Exception:
+                pass
         finally:
             self._fetching = False
 
@@ -1167,8 +1179,11 @@ class QuotaHUDApp:
                 continue
             for metric_key, tile in control.get("tiles", {}).items():
                 metric = snapshot.metrics.get(metric_key)
-                if metric and metric.remaining_pct is not None and metric.reset_at:
-                    tile["reset"].config(text=visible_countdown(metric.reset_at))
+                if metric and metric.remaining_pct is not None:
+                    if getattr(metric, "detail", "") == "resetado":
+                        tile["reset"].config(text="Resetado")
+                    elif metric.reset_at:
+                        tile["reset"].config(text=visible_countdown(metric.reset_at))
 
     def update_data(self) -> None:
         try:
@@ -1177,16 +1192,22 @@ class QuotaHUDApp:
             if (now - self._last_fetch >= 5.0 or not self.snapshots) and not self._fetching:
                 threading.Thread(target=self._async_fetch_snapshots, daemon=True).start()
         finally:
-            if self.root.winfo_exists():
-                self.root.after(1000, self.update_data)
+            try:
+                if self.root.winfo_exists():
+                    self.root.after(1000, self.update_data)
+            except Exception:
+                pass
 
-    def get_user_email() -> str:
+    def get_user_email(self) -> str:
         try:
-            with open(CLAUDE_JSON_PATH, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            return data.get("oauthAccount", {}).get("emailAddress", "")
-        except (OSError, ValueError, AttributeError):
-            return ""
+            return self.profile_service.get_active_email()
+        except Exception:
+            try:
+                with open(CLAUDE_JSON_PATH, "r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                return data.get("oauthAccount", {}).get("emailAddress", "")
+            except (OSError, ValueError, AttributeError):
+                return ""
 
     def force_update(self, _event=None) -> None:
         if hasattr(self, "status_lbl"):
@@ -1197,21 +1218,24 @@ class QuotaHUDApp:
                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             except Exception:
                 pass
+            for provider in self.claude_providers.values():
+                provider.trigger_refresh()
             self._async_fetch_snapshots()
         threading.Thread(target=trigger, daemon=True).start()
 
     def switch_claude1(self, _event=None) -> None:
-        self._switch_claude(str(HOME_DIR / ".claude-1.json"))
+        self._switch_claude(1)
 
     def switch_claude2(self, _event=None) -> None:
-        self._switch_claude(str(HOME_DIR / ".claude-2.json"))
+        self._switch_claude(2)
 
-    def _switch_claude(self, source: str) -> None:
-        import shutil
+    def _switch_claude(self, account_num: int) -> None:
         try:
-            shutil.copy(source, str(CLAUDE_JSON_PATH))
-        except OSError:
+            self.profile_service.switch_account_number(account_num)
+        except Exception:
             pass
+        for provider in self.claude_providers.values():
+            provider.trigger_refresh()
         self.update_data()
 
 

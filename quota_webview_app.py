@@ -110,7 +110,7 @@ class QuotaAPI:
         """Switch Claude Code account profile safely."""
         success = self._app.profile_service.switch_account_number(account_num)
         if success:
-            self._app.telemetry_service.collect()
+            self._app.telemetry_service.force_refresh()
         return success
 
     def force_refresh(self) -> dict[str, Any]:

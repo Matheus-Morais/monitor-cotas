@@ -1625,6 +1625,9 @@
         const emailBadge = currentConfig.show_account_email && email && email !== subText
           ? `<span class="account-badge" title="${email}">${email}</span>`
           : "";
+        const modelBadge = snapshot.model
+          ? `<span class="account-badge" title="Modelo ativo: ${snapshot.model}">${snapshot.model}</span>`
+          : "";
 
         let actionHtml = "";
         if (info.hasSwitch) {
@@ -1633,13 +1636,17 @@
             onclick="switchClaude(${info.switchNum})">${isActive ? '✓ Ativa' : 'Ativar'}</button>`;
         }
 
+        const costStr = snapshot.metadata && snapshot.metadata.cost_usd ? "$" + Number(snapshot.metadata.cost_usd).toFixed(2) : "";
+        const titleHover = [email, snapshot.model ? `Modelo: ${snapshot.model}` : "", costStr ? `Custo: ${costStr}` : ""].filter(Boolean).join(" • ");
+
         card.innerHTML = `
           <div class="card-header">
-            <div class="card-title-group" ${email ? `title="${email}"` : ""}>
+            <div class="card-title-group" ${titleHover ? `title="${titleHover}"` : ""}>
               ${providerLabelHtml(info)}${subHtml}
             </div>
             <div class="card-actions">
               ${actionHtml}
+              ${modelBadge}
               ${emailBadge}
               <button class="toggle-collapse-btn" onclick="toggleCard('${providerKey}')">${isCollapsed ? '▸' : '▾'}</button>
             </div>
@@ -1675,7 +1682,7 @@
               const metric = snapshot.metrics ? snapshot.metrics[def.key] : null;
               const pct = metric ? metric.remaining_pct : null;
               const color = getHealthColor(pct);
-              const resetHint = metric ? formatCountdown(metric.reset_at) : "";
+              const resetHint = metric ? (metric.detail === 'resetado' ? 'Resetado' : formatCountdown(metric.reset_at)) : "";
               const tooltipHtml = `<div class="custom-tooltip">${def.full}
 Disponível: ${pct !== null && pct !== undefined ? pct + '%' : 'N/D'}
 Redefinição: ${resetHint || 'sem dados'}

@@ -2024,6 +2024,7 @@ ${metric && metric.detail ? 'Detalhe: ' + metric.detail : ''}</div>
         renderCards();
       }
     }
+    window.applyMode = applyMode;
 
     function toggleMode() {
       if (window.pywebview && window.pywebview.api) {

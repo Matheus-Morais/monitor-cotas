@@ -175,7 +175,12 @@ class QuotaAPI:
 class QuotaWebViewApp:
     """Main desktop application controller."""
 
-    def __init__(self, config_path: Path | str | None = None, history_db_path: Path | str | None = None):
+    def __init__(
+        self,
+        config_path: Path | str | None = None,
+        history_db_path: Path | str | None = None,
+        initial_mode: str | None = None,
+    ):
         self.config_manager = ConfigManager(config_path)
         self.profile_service = ProfileService()
         self.history_store = HistoryStore(resolve_history_db_path(history_db_path))
@@ -198,7 +203,8 @@ class QuotaWebViewApp:
         self.window = None
         self.is_pinned = True
         self.is_minimized = False
-        self.mode = self.config_manager.get("ui_mode", "panel")
+        saved_mode = self.config_manager.get("ui_mode", "panel")
+        self.mode = initial_mode if initial_mode in ("avatar", "panel") else (saved_mode or "panel")
         self.api = QuotaAPI(self)
         self.hotkey_handle = None
         self.tray_icon = None
@@ -251,15 +257,18 @@ class QuotaWebViewApp:
         """Bring window to foreground and switch to panel if in avatar/hidden mode."""
         if not self.window:
             return
-        if self.mode == "avatar":
-            try:
-                self.set_mode("panel")
-            except Exception:
-                pass
+        try:
+            self.set_mode("panel", force=True)
+        except Exception:
+            pass
         try:
             self.window.show()
             self.window.restore()
             self.is_minimized = False
+        except Exception:
+            pass
+        try:
+            self.window.evaluate_js("if (window.applyMode) window.applyMode('panel');")
         except Exception:
             pass
         hwnd = self.get_hwnd()
@@ -269,6 +278,16 @@ class QuotaWebViewApp:
                 kernel32 = ctypes.windll.kernel32
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 user32.ShowWindow(hwnd, 5)  # SW_SHOW
+
+                HWND_TOPMOST = -1
+                HWND_NOTOPMOST = -2
+                SWP_NOSIZE = 0x0001
+                SWP_NOMOVE = 0x0002
+                SWP_SHOWWINDOW = 0x0040
+                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+                if not self.is_pinned:
+                    user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+
                 fore_hwnd = user32.GetForegroundWindow()
                 fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
                 cur_thread = kernel32.GetCurrentThreadId()
@@ -380,10 +399,15 @@ class QuotaWebViewApp:
         target = "avatar" if self.mode == "panel" else "panel"
         return self.set_mode(target)
 
-    def set_mode(self, target: str) -> dict[str, Any]:
+    def set_mode(self, target: str, force: bool = False) -> dict[str, Any]:
         if target not in ("avatar", "panel"):
             return {"mode": self.mode, "config": self.config_manager.data}
-        if self.mode == target:
+        if self.mode == target and not force:
+            if self.window:
+                try:
+                    self.window.evaluate_js(f"if (window.applyMode) window.applyMode('{target}');")
+                except Exception:
+                    pass
             return {"mode": self.mode, "config": self.config_manager.data}
 
         # 1. Capture current geometry before changing mode
@@ -449,6 +473,11 @@ class QuotaWebViewApp:
                 self.window.move(px, py)
                 geom.update({"x": px, "y": py})
                 self.config_manager.set("panel_geometry", geom)
+
+            try:
+                self.window.evaluate_js(f"if (window.applyMode) window.applyMode('{target}');")
+            except Exception:
+                pass
 
         return {"mode": self.mode, "config": self.config_manager.data}
 
@@ -579,12 +608,13 @@ def acquire_instance_mutex():
     return bool(handle), handle
 
 
-def signal_existing_instance() -> bool:
+def signal_existing_instance(target_mode: str = "panel") -> bool:
     if os.name != "nt":
         return False
     kernel32 = ctypes.windll.kernel32
     EVENT_MODIFY_STATE = 0x0002
-    handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "Local\\TokenWatchShowEvent")
+    event_name = "Local\\TokenWatchAvatarEvent" if target_mode == "avatar" else "Local\\TokenWatchShowEvent"
+    handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, event_name)
     if handle:
         kernel32.SetEvent(handle)
         kernel32.CloseHandle(handle)
@@ -593,31 +623,46 @@ def signal_existing_instance() -> bool:
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="TokenWatch Quota Monitor")
+    parser.add_argument("--avatar", action="store_true", help="Launch or switch to avatar mode")
+    parser.add_argument("--panel", action="store_true", help="Launch or switch to panel mode (default)")
+    args, _ = parser.parse_known_args()
+
+    target_mode = "avatar" if args.avatar else "panel"
+
     first, mutex = acquire_instance_mutex()
     if not first:
-        signal_existing_instance()
+        signal_existing_instance(target_mode)
         return
 
-    event_handle = None
+    event_show = None
+    event_avatar = None
     if os.name == "nt":
         kernel32 = ctypes.windll.kernel32
-        event_handle = kernel32.CreateEventW(None, False, False, "Local\\TokenWatchShowEvent")
+        event_show = kernel32.CreateEventW(None, False, False, "Local\\TokenWatchShowEvent")
+        event_avatar = kernel32.CreateEventW(None, False, False, "Local\\TokenWatchAvatarEvent")
 
-    app = QuotaWebViewApp()
+    app = QuotaWebViewApp(initial_mode=target_mode)
 
-    if event_handle and os.name == "nt":
+    if os.name == "nt" and event_show and event_avatar:
         def _listener():
+            handles = (ctypes.c_void_p * 2)(event_show, event_avatar)
             while True:
-                res = kernel32.WaitForSingleObject(event_handle, 0xFFFFFFFF)
+                res = kernel32.WaitForMultipleObjects(2, handles, False, 0xFFFFFFFF)
                 if res == 0:
                     app.activate_and_bring_to_front()
+                elif res == 1:
+                    app.set_mode("avatar")
         threading.Thread(target=_listener, daemon=True, name="activation-listener").start()
 
     try:
         app.run()
     finally:
-        if event_handle and os.name == "nt":
-            ctypes.windll.kernel32.CloseHandle(event_handle)
+        if event_show and os.name == "nt":
+            ctypes.windll.kernel32.CloseHandle(event_show)
+        if event_avatar and os.name == "nt":
+            ctypes.windll.kernel32.CloseHandle(event_avatar)
         if mutex and os.name == "nt":
             ctypes.windll.kernel32.CloseHandle(mutex)
 
